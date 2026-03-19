@@ -1,10 +1,11 @@
 /** Modales: nueva tarea/actividad, importar Deck, detalle de tarea. */
 
 import { STATE }                              from './state.js';
-import { createTask, fetchDeckBoards, fetchDeckCards } from './api.js';
+import { createTask, fetchTasks, fetchDeckBoards, fetchDeckCards } from './api.js';
 import { save }                               from './storage.js';
 import { renderBoard }                        from './render.js';
 import { formatTime, formatDate, isOverdue, generateId } from './utils.js';
+import { CONFIG }                             from './config.js';
 
 let _deckCards = [];
 
@@ -78,6 +79,14 @@ export async function submitNewTask() {
             : null,
         subtasks,
     });
+
+    if (CONFIG.BACKEND_URL) {
+        try {
+            STATE.tasks = await fetchTasks();
+        } catch (err) {
+            console.error('[submitNewTask] Error al recargar tareas:', err);
+        }
+    }
 
     closeModal('modalNewTask');
     renderBoard();
@@ -244,6 +253,14 @@ export async function importSelectedDeckCards() {
             subtasks:     [],
         });
         count++;
+    }
+
+    if (CONFIG.BACKEND_URL) {
+        try {
+            STATE.tasks = await fetchTasks();
+        } catch (err) {
+            console.error('[importSelectedDeckCards] Error al recargar tareas:', err);
+        }
     }
 
     closeModal('modalImportDeck');
