@@ -34,12 +34,12 @@ async function deckFetch(path) {
 
 export async function fetchTasks() {
     if (!CONFIG.BACKEND_URL) return [];
-    return apiFetch('/tasks');
+    return apiFetch('/tareas');
 }
 
 export async function saveTime(taskId, timeSpent, subtaskId = null, feedback = null) {
     if (CONFIG.BACKEND_URL) {
-        await apiFetch(`/tasks/${taskId}/time`, {
+        await apiFetch(`/tareas/${taskId}/time`, {
             method: 'POST',
             body: JSON.stringify({ timeSpent, subtaskId, feedback }),
         });
@@ -76,7 +76,7 @@ export async function createTask(data) {
     };
 
     if (CONFIG.BACKEND_URL) {
-        const saved = await apiFetch('/tasks', {
+        const saved = await apiFetch('/tareas', {
             method: 'POST',
             body: JSON.stringify(newTask),
         });
@@ -92,7 +92,7 @@ export async function createTask(data) {
 
 export async function updateColumn(taskId, column) {
     if (CONFIG.BACKEND_URL) {
-        await apiFetch(`/tasks/${taskId}`, {
+        await apiFetch(`/tareas/${taskId}`, {
             method: 'PATCH',
             body: JSON.stringify({ column }),
         });
@@ -105,7 +105,7 @@ export async function updateColumn(taskId, column) {
 
 export async function completeTask(taskId) {
     if (CONFIG.BACKEND_URL) {
-        await apiFetch(`/tasks/${taskId}/complete`, { method: 'POST' });
+        await apiFetch(`/tareas/${taskId}/complete`, { method: 'POST' });
     }
 
     const task = STATE.tasks.find(t => t.id === taskId);
