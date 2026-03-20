@@ -82,21 +82,22 @@ export async function submitNewTask() {
         });
     } catch (err) {
         console.error('[submitNewTask] Error al crear tarea:', err);
+        alert('Error al crear la tarea. Por favor intenta de nuevo.');
+        return;
     }
 
+    // POST exitoso: recargar lista desde el servidor, actualizar vista y cerrar modal.
     if (CONFIG.BACKEND_URL) {
         try {
-            const fetched = await fetchTasks();
-            if (Array.isArray(fetched) && fetched.length > 0) {
-                STATE.tasks = fetched;
-            }
+            const tareas = await fetchTasks();
+            if (Array.isArray(tareas)) STATE.tasks = tareas;
         } catch (err) {
             console.error('[submitNewTask] Error al recargar tareas:', err);
         }
     }
 
-    closeModal('modalNewTask');
     renderBoard();
+    closeModal('modalNewTask');
 }
 
 // ---------------------------------------------------------------------------
@@ -266,22 +267,24 @@ export async function importSelectedDeckCards() {
         }
     }
 
+    if (count === 0) {
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    // Al menos un POST exitoso: recargar lista desde el servidor, actualizar vista y cerrar modal.
     if (CONFIG.BACKEND_URL) {
         try {
-            const fetched = await fetchTasks();
-            // Mismo criterio que submitNewTask: evita sobrescribir con `[]`
-            // cuando fallan auth/filtrado en el backend.
-            if (Array.isArray(fetched) && fetched.length > 0) {
-                STATE.tasks = fetched;
-            }
+            const tareas = await fetchTasks();
+            if (Array.isArray(tareas)) STATE.tasks = tareas;
         } catch (err) {
             console.error('[importSelectedDeckCards] Error al recargar tareas:', err);
         }
     }
 
-    closeModal('modalImportDeck');
     renderBoard();
-    if (count > 0) alert(`${count} card(s) imported successfully!`);
+    closeModal('modalImportDeck');
+    alert(`${count} card(s) imported successfully!`);
     if (btn) btn.disabled = false;
 }
 
