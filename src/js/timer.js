@@ -21,7 +21,9 @@ export function startTimer(taskId) {
         return;
     }
 
-    const selectedSubId  = STATE.selectedSubtasks[taskId] ?? 'none';
+    const selectedSubId  = STATE.selectedSubtasks[taskId]
+        ?? document.getElementById(`subtask-select-${taskId}`)?.value
+        ?? 'none';
     const activeSub      = selectedSubId !== 'none'
         ? task.subtasks.find(s => s.id === selectedSubId)
         : null;
