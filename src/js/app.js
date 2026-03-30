@@ -39,7 +39,12 @@ import {
     timerActionStop,
 } from './timer.js';
 
+function setSubtaskSelection(taskId, subtaskId) {
+    STATE.selectedSubtasks[taskId] = subtaskId;
+}
+
 Object.assign(window, {
+    setSubtaskSelection,
     openNewTaskModal,
     openEditTaskModal,
     openImportDeckModal,

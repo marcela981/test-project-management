@@ -120,7 +120,7 @@ export function createTaskCard(task) {
                 <label>Working on:</label>
                 ${isActiveTimer
                     ? `<div class="active-subtask-name">${activeSubtask ? activeSubtask.text : '<span class="no-subtask">— General task —</span>'}</div>`
-                    : `<select id="subtask-select-${task.id}">${subtaskOptions}</select>`
+                    : `<select id="subtask-select-${task.id}" onchange="setSubtaskSelection('${task.id}', this.value)">${subtaskOptions}</select>`
                 }
             </div>` : ''}
             <div class="task-timer">
