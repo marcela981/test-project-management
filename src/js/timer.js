@@ -1,7 +1,8 @@
 /** Cronómetro por tarea; pausa guarda progreso y observación. */
 
 import { STATE }                    from './state.js';
-import { saveTime, completeTask }   from './api.js';
+import { saveTime, completeTask, updateTask } from './api.js';
+import { save }                              from './storage.js';
 import { renderBoard }              from './render.js';
 import { closeModal }               from './modals.js';
 import { formatTime }               from './utils.js';
@@ -20,13 +21,17 @@ export function startTimer(taskId) {
         return;
     }
 
-    const selectEl = document.getElementById(`subtask-select-${taskId}`);
+    const selectEl       = document.getElementById(`subtask-select-${taskId}`);
+    const selectedSubId  = selectEl?.value ?? 'none';
+    const activeSub      = selectedSubId !== 'none'
+        ? task.subtasks.find(s => s.id === selectedSubId)
+        : null;
 
     STATE.timers[type] = {
         taskId,
-        subtaskId:    selectEl?.value ?? 'none',
+        subtaskId:    selectedSubId,
         startTime:    Date.now(),
-        accumulated:  task.timeSpent ?? 0,
+        accumulated:  activeSub ? (activeSub.timeSpent ?? 0) : (task.timeSpent ?? 0),
         nextNotifyAt: NOTIFY_THRESHOLD[type],
         intervalId:   setInterval(() => _tick(taskId, type), 1000)
     };
@@ -58,20 +63,42 @@ export async function stopTimer(taskId) {
     const subtaskId = STATE.timers[type].subtaskId;
     STATE.timers[type] = null;
 
-    await saveTime(taskId, elapsed, subtaskId, { progress: 100 });
-    await completeTask(taskId);
+    if (subtaskId && subtaskId !== 'none') {
+        // Completar solo la subtarea seleccionada
+        await saveTime(taskId, elapsed, subtaskId, {});
+        const sub = task.subtasks.find(s => s.id === subtaskId);
+        if (sub) sub.completed = true;
+        // Recalcular progreso de la tarea según subtareas completadas
+        const completed = task.subtasks.filter(s => s.completed).length;
+        task.progress   = Math.round((completed / task.subtasks.length) * 100);
+        if (task.progress === 100) {
+            await completeTask(taskId);
+        } else {
+            // Sincronizar subtareas y progreso con el backend
+            await updateTask(taskId, { subtasks: task.subtasks, progress: task.progress });
+        }
+    } else {
+        // Sin subtarea: completar la tarea entera
+        await saveTime(taskId, elapsed, subtaskId, { progress: 100 });
+        await completeTask(taskId);
+    }
     renderBoard();
 }
 
 export function cancelPause(taskId) {
     const task = STATE.tasks.find(t => t.id === taskId);
     if (task) {
-        const type = task.type;
+        const type      = task.type;
+        const prev      = STATE.timers[type];
+        // Preservar el tiempo ya transcurrido antes de la pausa y la subtarea activa
+        const prevElapsed   = prev ? Math.floor((Date.now() - prev.startTime) / 1000) : 0;
+        const prevSubtaskId = prev?.subtaskId ?? null;
+        const prevAccum     = prev ? prev.accumulated + prevElapsed : (task.timeSpent ?? 0);
         STATE.timers[type] = {
             taskId,
-            subtaskId:    null,
+            subtaskId:    prevSubtaskId,
             startTime:    Date.now(),
-            accumulated:  task.timeSpent ?? 0,
+            accumulated:  prevAccum,
             nextNotifyAt: NOTIFY_THRESHOLD[type],
             intervalId:   setInterval(() => _tick(taskId, type), 1000)
         };
