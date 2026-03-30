@@ -19,11 +19,48 @@ export function isOverdue(deadline) {
     return new Date(`${deadline}T23:59:59`) < new Date();
 }
 
+/**
+ * Índice de Efectividad Laboral (IEL) ponderado.
+ *
+ * Para cada tarea proyecto i:
+ *   C_i  = progress / 100                          (completitud, 0–1)
+ *   R_o  = T_rem / T_tot                           (ratio oportunidad)
+ *   e_i  = C_i × (1 + R_o)  capped en [0.0, 1.5]
+ *
+ * E_total = Σ e_i / N   →  devuelto como entero 0–150
+ */
 export function calculateEffectiveness(tasks) {
-    const done = tasks.filter(t => t.deadline && t.progress === 100);
-    if (done.length === 0) return 0;
-    const onTime = done.filter(t => !isOverdue(t.deadline)).length;
-    return Math.round((onTime / done.length) * 100);
+    const evaluable = tasks.filter(t => t.type === 'project');
+    const N = evaluable.length;
+    if (N === 0) return 0;
+
+    const now = new Date();
+    let sumEi = 0;
+
+    for (const task of evaluable) {
+        const Ci = (task.progress ?? 0) / 100;
+        let Ro = 0;
+
+        if (task.deadline) {
+            const deadline = new Date(`${task.deadline}T23:59:59`);
+            const T_rem = (deadline - now) / 3_600_000; // horas restantes (negativo si vencida)
+
+            if (task.startDate) {
+                const start = new Date(`${task.startDate}T00:00:00`);
+                const T_tot = Math.max(1, (deadline - start) / 3_600_000); // mín 1h para evitar /0
+                Ro = T_rem / T_tot;
+            }
+            // Si la tarea está al 100% y el deadline ya pasó, no penalizar:
+            // probablemente fue completada a tiempo pero no guardamos la fecha exacta.
+            if (Ci === 1.0 && T_rem < 0) Ro = 0;
+        }
+        // Sin deadline → Ro = 0 (factor tiempo neutro)
+
+        const ei = Math.max(0.0, Math.min(1.5, Ci * (1 + Ro)));
+        sumEi += ei;
+    }
+
+    return Math.round((sumEi / N) * 100); // 0–150
 }
 
 export function generateId(prefix = 'item') {
