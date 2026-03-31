@@ -94,3 +94,25 @@ export function getActivityTypeLabel(type) {
     };
     return labels[type] ?? type;
 }
+
+export function formatRelativeTime(dateInput) {
+    if (!dateInput) return '';
+    const date = dateInput.includes('T') ? new Date(dateInput) : new Date(`${dateInput}T00:00:00`);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return 'Hoy';
+    if (diffDays === 1) return 'Hace 1 día';
+    if (diffDays < 30) return `Hace ${diffDays} días`;
+    const months = Math.floor(diffDays / 30);
+    if (months === 1) return 'Hace 1 mes';
+    if (months < 12) return `Hace ${months} meses`;
+    const years = Math.floor(months / 12);
+    return years === 1 ? 'Hace 1 año' : `Hace ${years} años`;
+}
+
+export function formatTimeOfDay(isoStr) {
+    if (!isoStr) return '';
+    const date = new Date(isoStr);
+    return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+}

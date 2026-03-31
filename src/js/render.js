@@ -2,7 +2,7 @@
 
 import { STATE }      from './state.js';
 import { updateKPIs } from './kpi.js';
-import { formatTime, formatDate, isOverdue, getActivityTypeLabel, formatTimeCompact, formatLogDate } from './utils.js';
+import { formatTime, formatDate, isOverdue, getActivityTypeLabel, formatTimeCompact, formatLogDate, formatRelativeTime, formatTimeOfDay } from './utils.js';
 
 export function renderBoard() {
     const columns = {
@@ -80,19 +80,31 @@ export function createTaskCard(task) {
         <div class="task-priority ${task.priority}"></div>
         <div class="task-header">
             <span class="task-title">${task.title}</span>
-            <div style="display:flex;gap:0.25rem;align-items:center;">
-                <button class="task-menu-btn" data-action="edit-task" data-task-id="${task.id}" title="Edit task">
-                    <i class="fas fa-pencil-alt"></i>
+            <div class="task-menu-wrapper">
+                <button class="task-menu-btn task-menu-toggle" data-action="toggle-task-menu" data-task-id="${task.id}" title="Opciones">
+                    <i class="fas fa-ellipsis-v"></i>
                 </button>
-                <button class="task-menu-btn" data-action="delete-task" data-task-id="${task.id}" title="Delete task">
-                    <i class="fas fa-trash"></i>
-                </button>
-                <button class="task-menu-btn" data-action="task-detail" data-task-id="${task.id}" title="View detail">
-                    <i class="fas fa-expand"></i>
-                </button>
+                <div class="task-dropdown" id="task-dropdown-${task.id}">
+                    <button class="task-dropdown-item" data-action="edit-task" data-task-id="${task.id}">
+                        <i class="fas fa-pencil-alt"></i> Editar
+                    </button>
+                    <button class="task-dropdown-item" data-action="task-detail" data-task-id="${task.id}">
+                        <i class="fas fa-expand"></i> Detalle
+                    </button>
+                    <button class="task-dropdown-item danger" data-action="delete-task" data-task-id="${task.id}">
+                        <i class="fas fa-trash"></i> Eliminar
+                    </button>
+                </div>
             </div>
         </div>
         <div class="task-meta">
+            ${(task.createdAt || task.startDate) ? (() => {
+                const src = task.createdAt || task.startDate;
+                const timeStr = task.createdAt ? ` · ${formatTimeOfDay(task.createdAt)}` : '';
+                return `<span class="task-meta-item" title="Creada: ${new Date(task.createdAt || task.startDate + 'T00:00:00').toLocaleString('es-ES')}">
+                    <i class="fas fa-history"></i>${formatRelativeTime(src)}${timeStr}
+                </span>`;
+            })() : ''}
             ${task.deadline ? `
                 <span class="task-meta-item ${overdueClass} ${completeClass}">
                     <i class="fas fa-calendar"></i>${formatDate(task.deadline)}

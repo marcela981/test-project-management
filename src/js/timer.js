@@ -4,7 +4,7 @@ import { STATE }                    from './state.js';
 import { saveTime, completeTask, updateTask } from './api.js';
 import { save }                              from './storage.js';
 import { renderBoard }              from './render.js';
-import { closeModal }               from './modals.js';
+import { closeModal, openCompletionModal } from './modals.js';
 import { formatTime }               from './utils.js';
 
 // Umbrales de notificación: proyecto 3h, actividad 1h
@@ -65,24 +65,50 @@ export async function stopTimer(taskId) {
     STATE.timers[type] = null;
 
     if (subtaskId && subtaskId !== 'none') {
-        // Completar solo la subtarea seleccionada
-        await saveTime(taskId, elapsed, subtaskId, {});
         const sub = task.subtasks.find(s => s.id === subtaskId);
-        if (sub) sub.completed = true;
-        // Recalcular progreso de la tarea según subtareas completadas
-        const completed = task.subtasks.filter(s => s.completed).length;
-        task.progress   = Math.round((completed / task.subtasks.length) * 100);
-        if (task.progress === 100) {
-            await completeTask(taskId);
-        } else {
-            // Sincronizar subtareas y progreso con el backend
-            await updateTask(taskId, { subtasks: task.subtasks, progress: task.progress });
+        // Calcular si esta subtarea llevaría el progreso al 100%
+        const completedAfter = task.subtasks.filter(s => s.completed || s.id === subtaskId).length;
+        const progressAfter  = Math.round((completedAfter / task.subtasks.length) * 100);
+
+        if (progressAfter === 100 && task.type === 'project') {
+            // Delegar cierre al modal de dificultad/obstáculos
+            openCompletionModal(taskId, elapsed, subtaskId);
+            return;
         }
+
+        // Subtarea que no completa la tarea entera
+        await saveTime(taskId, elapsed, subtaskId, {});
+        if (sub) sub.completed = true;
+        const done = task.subtasks.filter(s => s.completed).length;
+        task.progress = Math.round((done / task.subtasks.length) * 100);
+        await updateTask(taskId, { subtasks: task.subtasks, progress: task.progress });
     } else {
-        // Sin subtarea: completar la tarea entera
+        if (task.type === 'project') {
+            // Delegar cierre al modal de dificultad/obstáculos
+            openCompletionModal(taskId, elapsed, null);
+            return;
+        }
+        // Actividad: completar directamente
         await saveTime(taskId, elapsed, subtaskId, { progress: 100 });
         await completeTask(taskId);
     }
+    renderBoard();
+}
+
+export function cancelCompletion(taskId) {
+    const task = STATE.tasks.find(t => t.id === taskId);
+    if (task) {
+        const type = task.type;
+        STATE.timers[type] = {
+            taskId,
+            subtaskId:    'none',
+            startTime:    Date.now(),
+            accumulated:  task.timeSpent ?? 0,
+            nextNotifyAt: NOTIFY_THRESHOLD[type],
+            intervalId:   setInterval(() => _tick(taskId, type), 1000),
+        };
+    }
+    closeModal('modalTaskDetail');
     renderBoard();
 }
 
@@ -112,15 +138,20 @@ export async function confirmPause(taskId, elapsedTime) {
     const task = STATE.tasks.find(t => t.id === taskId);
     if (!task) return;
 
-    const type = task.type;
+    const type        = task.type;
     const progress    = parseInt(document.getElementById('pauseProgress').value, 10);
     const observation = document.getElementById('pauseObservation').value.trim();
     const subtaskId   = STATE.timers[type]?.subtaskId ?? null;
 
     await saveTime(taskId, elapsedTime, subtaskId, {
         progress,
-        observation: observation || null
+        observation: observation || null,
     });
+
+    if (task.type === 'project') {
+        const helpVisible = document.getElementById('pauseHelpVisible')?.checked ?? false;
+        await updateTask(taskId, { helpVisible });
+    }
 
     STATE.timers[type] = null;
     closeModal('modalTaskDetail');
@@ -240,6 +271,11 @@ function _openPauseFeedbackModal(taskId, elapsedTime) {
                 <textarea class="form-textarea" id="pauseObservation"
                           placeholder="Briefly describe what you accomplished..."></textarea>
             </div>
+            ${task.type === 'project' ? `
+            <label class="help-visible-label">
+                <input type="checkbox" id="pauseHelpVisible">
+                <span>¿Deseas que esta tarea sea visible para que otros soliciten tu ayuda en este tema?</span>
+            </label>` : ''}
         </div>`;
 
     document.getElementById('modalDetailFooter').innerHTML = `

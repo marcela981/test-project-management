@@ -121,6 +121,7 @@ export async function setTaskTime(taskId, newSeconds) {
 export async function createTask(data) {
     const newTask = {
         id:           generateId('task'),
+        createdAt:    new Date().toISOString(),
         progress:     0,
         timeSpent:    0,
         timeLog:      [],
