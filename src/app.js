@@ -34,7 +34,7 @@ import { confirmCompletion } from './timer/completionModal.js';
 import {
     startTimer, pauseTimer, stopTimer, cancelPause, confirmPause,
     closeTimerNotif, timerNotifNo, closeTimerAction, timerActionFinalize, timerActionStop,
-    cancelCompletion,
+    cancelCompletion, restoreTimers,
 } from './timer/timer.js';
 
 // ---------------------------------------------------------------------------
@@ -214,7 +214,8 @@ async function init() {
     }
 
     await Promise.all(promises);
-
+    
+    restoreTimers();
     renderBoard();
     setupDragAndDrop();
 

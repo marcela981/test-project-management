@@ -22,3 +22,27 @@ export function clear() {
     localStorage.removeItem(STORAGE_KEY);
     STATE.tasks = [];
 }
+
+const TIMER_KEY = 'dashboard_timers_v1';
+
+export function saveTimers() {
+    const toSave = {};
+    for (const [type, timer] of Object.entries(STATE.timers)) {
+        if (timer) {
+            const { intervalId, ...data } = timer; // intervalId no es serializable
+            toSave[type] = data;
+        }
+    }
+    localStorage.setItem(TIMER_KEY, JSON.stringify(toSave));
+}
+
+export function loadTimerData() {
+    const raw = localStorage.getItem(TIMER_KEY);
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw);
+    } catch {
+        localStorage.removeItem(TIMER_KEY);
+        return null;
+    }
+}

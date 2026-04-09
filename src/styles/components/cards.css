@@ -13,6 +13,24 @@
     box-shadow: var(--shadow-sm);
 }
 
+.task-card.complete {
+    opacity: 0.75;
+    border-left: 3px solid var(--color-success, #22c55e);
+}
+
+.task-completed-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--color-success, #22c55e);
+    background: color-mix(in srgb, var(--color-success, #22c55e) 12%, transparent);
+    padding: 0.2rem 0.6rem;
+    border-radius: 99px;
+    margin-bottom: 0.4rem;
+}
+
 .task-card.dragging {
     opacity: 0.5;
     cursor: grabbing;

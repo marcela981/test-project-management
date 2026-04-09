@@ -15,10 +15,11 @@ export function renderBoard() {
     const counts = { 'actively-working': 0, 'working-now': 0, 'activities': 0 };
 
     STATE.tasks.forEach(task => {
-        const col = columns[task.column];
+        const displayColumn = counts.hasOwnProperty(task.column) ? task.column : 'actively-working';
+        const col = columns[displayColumn];
         if (!col) return;
         col.appendChild(createTaskCard(task));
-        counts[task.column]++;
+        counts[displayColumn]++;
     });
 
     document.getElementById('countActivelyWorking').textContent = counts['actively-working'];
@@ -42,12 +43,6 @@ export function createTaskCard(task) {
     const type          = task.type;
     const isActiveTimer = STATE.timers[type]?.taskId === task.id;
     const timer         = STATE.timers[type];
-
-    const card = document.createElement('div');
-    card.className = `task-card${isActiveTimer ? ' active-timer' : ''}`;
-    card.draggable = true;
-    card.dataset.taskId = task.id;
-
     const completedCount  = task.subtasks.filter(s => s.completed).length;
     const totalCount      = task.subtasks.length;
     const progressPercent = task.progress
@@ -56,7 +51,14 @@ export function createTaskCard(task) {
     const overdueClass  = isOverdue(task.deadline) && !isComplete ? 'overdue' : '';
     const completeClass = isComplete ? 'complete' : '';
 
-    const showTimer          = task.column === 'working-now' || task.column === 'activities';
+    const card = document.createElement('div');
+    card.className = ['task-card', overdueClass, completeClass, isActiveTimer ? 'active-timer' : '']
+        .filter(Boolean)
+        .join(' ');
+    card.draggable = !isComplete;
+    card.dataset.taskId = task.id;
+
+    const showTimer          = (task.column === 'working-now' || task.column === 'activities') && !isComplete;
     const showSubtaskSelector = showTimer && task.type !== 'activity';
 
     const activeSubtaskId = isActiveTimer ? timer.subtaskId : null;
@@ -78,6 +80,10 @@ export function createTaskCard(task) {
 
     card.innerHTML = `
         <div class="task-priority ${task.priority}"></div>
+        ${isComplete ? `
+        <div class="task-completed-badge">
+            <i class="fas fa-check-circle"></i> Completada
+        </div>` : ''}
         <div class="task-header">
             <span class="task-title">${task.title}</span>
             <div class="task-menu-wrapper">

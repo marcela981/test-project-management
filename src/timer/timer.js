@@ -2,11 +2,12 @@
 
 import { STATE }      from '../core/state.js';
 import { saveTime, completeTask, updateTask } from '../api/api.js';
-import { save }        from '../core/storage.js';
+import { save, saveTimers, loadTimerData } from '../core/storage.js';
 import { renderBoard } from '../board/render.js';
 import { formatTime }  from '../shared/utils.js';
 import { closeModal }  from '../shared/modal.js';
 import { openCompletionModal } from './completionModal.js';
+
 
 // Umbrales de notificación: proyecto 3h, actividad 1h
 const NOTIFY_THRESHOLD = { project: 3 * 3600, activity: 1 * 3600 };
@@ -38,6 +39,7 @@ export function startTimer(taskId) {
         intervalId:   setInterval(() => _tick(taskId, type), 1000)
     };
 
+    saveTimers();
     renderBoard();
 }
 
@@ -64,6 +66,8 @@ export async function stopTimer(taskId) {
     const elapsed   = _elapsed(type);
     const subtaskId = STATE.timers[type].subtaskId;
     STATE.timers[type] = null;
+    saveTimers();
+
 
     if (subtaskId && subtaskId !== 'none') {
         const sub = task.subtasks.find(s => s.id === subtaskId);
@@ -103,6 +107,7 @@ export function cancelCompletion(taskId) {
             nextNotifyAt: NOTIFY_THRESHOLD[type],
             intervalId:   setInterval(() => _tick(taskId, type), 1000),
         };
+        saveTimers();
     }
     closeModal('modalTaskDetail');
     renderBoard();
@@ -124,6 +129,7 @@ export function cancelPause(taskId) {
             nextNotifyAt: NOTIFY_THRESHOLD[type],
             intervalId:   setInterval(() => _tick(taskId, type), 1000)
         };
+        saveTimers();
     }
     closeModal('modalTaskDetail');
     renderBoard();
@@ -150,7 +156,26 @@ export async function confirmPause(taskId, elapsedTime) {
 
     STATE.timers[type] = null;
     closeModal('modalTaskDetail');
+    saveTimers();
     renderBoard();
+}
+
+export function restoreTimers() {
+    const saved = loadTimerData();
+    if (!saved) return;
+
+    for (const [type, timerData] of Object.entries(saved)) {
+        if (!timerData) continue;
+
+        const task = STATE.tasks.find(t => t.id === timerData.taskId);
+        if (!task) continue; // la tarea ya no existe
+
+        // startTime original se preservó — el elapsed acumulará correctamente
+        STATE.timers[type] = {
+            ...timerData,
+            intervalId: setInterval(() => _tick(timerData.taskId, type), 1000),
+        };
+    }
 }
 
 // ---------------------------------------------------------------------------

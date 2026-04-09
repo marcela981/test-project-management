@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useDateRange } from '../hooks/useDateRange.js';
-import { fetchTeams, fetchAdminUsers } from '../dashApi.js';
+import { fetchTeams, fetchAdminUsers, fetchTeamMetrics } from '../dashApi.js';
 import PeriodSelector from './PeriodSelector.jsx';
 import KpiCard from './KpiCard.jsx';
 import { AreaChart, DoughnutChart } from './Charts.jsx';
@@ -48,6 +48,8 @@ export default function TeamDashboardView({ user }) {
     const [selectedMember, setSelectedMember] = useState(constraints.defaultMember);
     const [teams, setTeams]                   = useState([]);
     const [allMembers, setAllMembers]         = useState([]);
+    const [memberMetrics, setMemberMetrics]   = useState([]);
+    const [metricsLoading, setMetricsLoading] = useState(false);
 
     useEffect(() => {
         fetchTeams().then(data => setTeams(data ?? [])).catch(() => {});
@@ -60,30 +62,45 @@ export default function TeamDashboardView({ user }) {
         )).catch(() => {});
     }, []);
 
+    // Fetch real metrics when team or date range changes
+    useEffect(() => {
+        if (!selectedTeam || selectedTeam === 'all') {
+            setMemberMetrics([]);
+            return;
+        }
+        setMetricsLoading(true);
+        fetchTeamMetrics(selectedTeam, dr.range.start, dr.range.end)
+            .then(data => setMemberMetrics(data?.memberMetrics ?? []))
+            .catch(() => setMemberMetrics([]))
+            .finally(() => setMetricsLoading(false));
+    }, [selectedTeam, dr.range.start, dr.range.end]);
+
     const visibleMembers = useMemo(() => {
         let list = allMembers;
         if (selectedTeam !== 'all') list = list.filter(m => m.teamId === selectedTeam);
         return list;
     }, [allMembers, selectedTeam]);
 
-    const filteredMembers = useMemo(() => {
-        let list = visibleMembers;
-        if (selectedMember !== 'all') list = list.filter(m => m.userId === selectedMember);
-        return list;
-    }, [visibleMembers, selectedMember]);
+    // Metrics filtered by selected member
+    const filteredMetrics = useMemo(() => {
+        if (selectedMember === 'all') return memberMetrics;
+        return memberMetrics.filter(m => String(m.userId) === String(selectedMember));
+    }, [memberMetrics, selectedMember]);
 
-    // --- KPIs ---
+    // --- KPIs computed from real metrics ---
     const kpis = useMemo(() => {
-        const total    = filteredMembers.reduce((s, m) => s + (m.completedTasks ?? 0), 0);
-        const avgOnTime = filteredMembers.length
-            ? filteredMembers.reduce((s, m) => s + (m.onTimeRate ?? 0), 0) / filteredMembers.length
+        const total     = filteredMetrics.reduce((s, m) => s + (m.metrics?.completedTasks ?? 0), 0);
+        const avgOnTime = filteredMetrics.length
+            ? filteredMetrics.reduce((s, m) => s + (m.metrics?.completionRate ?? 0), 0) / filteredMetrics.length
             : 0;
-        const totalHrs = filteredMembers.reduce((s, m) => s + (m.hoursWorked ?? 0), 0);
-        const avgEff   = filteredMembers.length
-            ? filteredMembers.reduce((s, m) => s + (m.effectivenessIndex ?? 0), 0) / filteredMembers.length
+        const totalHrs  = filteredMetrics.reduce((s, m) => s + (m.metrics?.hoursWorked ?? 0), 0);
+        const avgEff    = filteredMetrics.length
+            ? filteredMetrics.reduce((s, m) => s + (m.metrics?.iel ?? 0), 0) / filteredMetrics.length
             : 0;
         return { total, avgOnTime, totalHrs, avgEff };
-    }, [filteredMembers]);
+    }, [filteredMetrics]);
+
+    const hasTeamSelected = selectedTeam && selectedTeam !== 'all';
 
     const teamTrendChart      = useMemo(() => ({ labels: [], datasets: [] }), []);
     const individualTrendChart = useMemo(() => ({ labels: [], datasets: [] }), []);
@@ -156,19 +173,19 @@ export default function TeamDashboardView({ user }) {
             {/* Row 1 – KPIs */}
             <div className="metrics-grid">
                 <KpiCard color="primary" icon="fa-tasks"
-                    value={kpis.total}
+                    value={hasTeamSelected && !metricsLoading ? kpis.total : '—'}
                     label="Tareas Completadas"
                 />
                 <KpiCard color="success" icon="fa-clock"
-                    value={`${Math.round(kpis.avgOnTime)}%`}
+                    value={hasTeamSelected && !metricsLoading ? `${Math.round(kpis.avgOnTime)}%` : '—'}
                     label="Entrega a Tiempo (prom.)"
                 />
                 <KpiCard color="warning" icon="fa-hourglass-half"
-                    value={`${kpis.totalHrs}h`}
+                    value={hasTeamSelected && !metricsLoading ? `${kpis.totalHrs}h` : '—'}
                     label="Horas Trabajadas"
                 />
                 <KpiCard color="purple" icon="fa-bolt"
-                    value={kpis.avgEff.toFixed(1)}
+                    value={hasTeamSelected && !metricsLoading ? kpis.avgEff.toFixed(1) : '—'}
                     label="Índice de Efectividad"
                 />
             </div>
@@ -196,7 +213,7 @@ export default function TeamDashboardView({ user }) {
                     </h3>
                     <p className="text-muted text-sm" style={{ marginBottom: '0.5rem' }}>
                         {selectedMember !== 'all'
-                            ? `Margen de entrega de ${filteredMembers[0]?.displayname ?? 'miembro seleccionado'}`
+                            ? `Margen de entrega de ${filteredMetrics[0]?.displayName ?? 'miembro seleccionado'}`
                             : 'Promedio del grupo filtrado'}
                     </p>
                     <AreaChart
@@ -248,38 +265,50 @@ export default function TeamDashboardView({ user }) {
                                 <th>Entrega a Tiempo</th>
                                 <th>Rendimiento</th>
                                 <th>Horas Trabajadas</th>
-                                <th>% Entrega Anticipada</th>
+                                <th>Índice de Efectividad</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredMembers.map(m => (
+                            {metricsLoading && (
+                                <tr>
+                                    <td colSpan={6} style={{ textAlign: 'center', padding: '2rem' }}>
+                                        <i className="fas fa-spinner fa-spin" style={{ marginRight: '0.5rem' }} />
+                                        Cargando métricas...
+                                    </td>
+                                </tr>
+                            )}
+                            {!metricsLoading && !hasTeamSelected && (
+                                <tr>
+                                    <td colSpan={6} style={{ textAlign: 'center', padding: '2rem' }}>
+                                        Selecciona un equipo para ver las métricas.
+                                    </td>
+                                </tr>
+                            )}
+                            {!metricsLoading && hasTeamSelected && filteredMetrics.map(m => (
                                 <tr key={m.userId}>
                                     <td>
                                         <div className="member-cell">
-                                            <div className="member-avatar">{initials(m.displayname)}</div>
+                                            <div className="member-avatar">{initials(m.displayName)}</div>
                                             <div>
-                                                <div className="member-name">{m.displayname}</div>
-                                                {m.jobTitle && (
-                                                    <div className="member-role">{m.jobTitle}</div>
-                                                )}
+                                                <div className="member-name">{m.displayName}</div>
                                             </div>
                                         </div>
                                     </td>
-                                    <td>{m.completedTasks ?? 0}</td>
-                                    <td><OnTimeBadge rate={m.onTimeRate} /></td>
+                                    <td>{m.metrics?.completedTasks ?? 0}</td>
+                                    <td><OnTimeBadge rate={m.metrics?.completionRate} /></td>
                                     <td>
-                                        {m.performance ?? '—'}
+                                        {m.metrics?.completedTasks ?? '—'}
                                         <span className="text-muted text-sm"> tareas/período</span>
                                     </td>
-                                    <td>{m.hoursWorked != null ? `${m.hoursWorked}h` : '—'}</td>
+                                    <td>{m.metrics?.hoursWorked != null ? `${m.metrics.hoursWorked}h` : '—'}</td>
                                     <td>
-                                        {m.earlyDeliveryRate != null
-                                            ? <OnTimeBadge rate={m.earlyDeliveryRate} />
+                                        {m.metrics?.iel != null
+                                            ? m.metrics.iel.toFixed(1)
                                             : '—'}
                                     </td>
                                 </tr>
                             ))}
-                            {filteredMembers.length === 0 && (
+                            {!metricsLoading && hasTeamSelected && filteredMetrics.length === 0 && (
                                 <tr>
                                     <td colSpan={6} style={{ textAlign: 'center', padding: '2rem' }}>
                                         Sin datos para los filtros seleccionados.
