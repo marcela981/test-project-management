@@ -93,15 +93,6 @@ export async function submitNewTask() {
         return;
     }
 
-    const isDuplicate = STATE.tasks.some(t =>
-        t.title.trim().toLowerCase() === name.toLowerCase() &&
-        t.id !== STATE.editingTaskId
-    );
-    if (isDuplicate) {
-        alert('Ya existe una tarea o actividad con este nombre. Por favor usa un nombre diferente.');
-        return;
-    }
-
     const subtasks = Array.from(document.querySelectorAll('.subtask-input'))
         .map(input => ({ raw: input.value.trim() }))
         .filter(({ raw }) => raw)
