@@ -1,68 +1,168 @@
-/** Datos mock y persistencia localStorage para el weekly tracker. */
+/** Capa de datos del weekly tracker: llamadas REST a /api/weekly. */
 
-const STORAGE_KEY = 'weekly_blocks_mock';
+import { CONFIG } from '../core/config.js';
+import { getToken, logout } from '../auth/auth.js';
 
-export const MOCK_TASKS = [
-    { id: 1, title: 'Desarrollo móvil',     type: 'task',     priority: 'high',   column: 'actively_working', completed: false },
-    { id: 2, title: 'Revisión de PRs',       type: 'task',     priority: 'medium', column: 'working_right_now', completed: false },
-    { id: 3, title: 'Reunión weekly',        type: 'activity', priority: 'high',   column: 'activities',        completed: false },
-    { id: 4, title: 'Deploy producción',     type: 'task',     priority: 'urgent', column: 'actively_working', completed: false },
-    { id: 5, title: 'Code review backend',   type: 'task',     priority: 'low',    column: 'activities',        completed: true  },
-];
+const WEEKLY_API = `${CONFIG.BACKEND_BASE_URL}/api/weekly`;
 
-const DEFAULT_BLOCKS = [
-    { id: 1, day: 1, task_id: 1,                                           start_time: '07:00', end_time: '15:00' },
-    { id: 2, day: 1, task_id: 3,                                           start_time: '15:00', end_time: '16:00' },
-    { id: 3, day: 2, task_id: 2,                                           start_time: '09:00', end_time: '12:00' },
-    { id: 4, day: 2, block_type: 'personal', title: 'Almuerzo', color: '#e8b86d', start_time: '12:00', end_time: '13:00' },
-    { id: 5, day: 3, task_id: 3,                                           start_time: '10:00', end_time: '11:00' },
-];
+// Estado en memoria (última respuesta del backend).
+let _cachedPreferences = null;
+let _cachedBlocks      = [];
+let _currentWeekStart  = null;
 
-export function loadBlocks() {
+// ── HTTP helper ──────────────────────────────────────────────────────────────
+
+async function _apiFetch(path, options = {}) {
+    const token = getToken();
+    const res = await fetch(`${WEEKLY_API}${path}`, {
+        headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        ...options,
+    });
+
+    if (res.status === 401) { logout(); return null; }
+
+    if (!res.ok) {
+        let msg = `API ${res.status}`;
+        try {
+            const err = await res.json();
+            if (err?.detail) msg = err.detail;
+        } catch (_) { /* body no JSON */ }
+        throw new Error(msg);
+    }
+
+    const text = await res.text();
+    return text ? JSON.parse(text) : {};
+}
+
+// ── Preferences ──────────────────────────────────────────────────────────────
+
+export async function fetchPreferences() {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) return JSON.parse(raw);
-    } catch (_) {}
-    const copy = DEFAULT_BLOCKS.map(b => ({ ...b }));
-    saveBlocks(copy);
-    return copy;
-}
-
-export function saveBlocks(blocks) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(blocks));
-}
-
-export function addBlock(block) {
-    const blocks = loadBlocks();
-    const id = blocks.length > 0 ? Math.max(...blocks.map(b => b.id)) + 1 : 1;
-    const newBlock = { ...block, id };
-    blocks.push(newBlock);
-    saveBlocks(blocks);
-    return newBlock;
-}
-
-export function removeBlock(blockId) {
-    saveBlocks(loadBlocks().filter(b => b.id !== blockId));
-}
-
-export function updateBlock(blockId, updates) {
-    saveBlocks(loadBlocks().map(b => b.id === blockId ? { ...b, ...updates } : b));
+        const p = await _apiFetch('/preferences');
+        if (p) _cachedPreferences = p;
+    } catch (e) {
+        console.error('[weekly] fetchPreferences:', e);
+    }
+    return _cachedPreferences ?? { week_start_day: 1, week_end_day: 5 };
 }
 
 export function getPreferences() {
+    return _cachedPreferences ?? { week_start_day: 1, week_end_day: 5 };
+}
+
+export async function savePreferences(prefs) {
     try {
-        const raw = localStorage.getItem('user_preferences');
-        if (raw) return JSON.parse(raw);
-    } catch (_) {}
-    return { week_start_day: 1, week_end_day: 5 };
+        const saved = await _apiFetch('/preferences', {
+            method: 'PUT',
+            body: JSON.stringify(prefs),
+        });
+        if (saved) _cachedPreferences = saved;
+        window.dispatchEvent(new CustomEvent('preferences-updated', { detail: _cachedPreferences }));
+    } catch (e) {
+        console.error('[weekly] savePreferences:', e);
+        alert(`No se pudieron guardar las preferencias: ${e.message}`);
+    }
 }
 
-export function savePreferences(prefs) {
-    localStorage.setItem('user_preferences', JSON.stringify(prefs));
-    window.dispatchEvent(new CustomEvent('preferences-updated', { detail: prefs }));
+// ── Blocks ───────────────────────────────────────────────────────────────────
+
+export async function fetchBlocks(weekStartIsoDate) {
+    _currentWeekStart = weekStartIsoDate;
+    try {
+        const list = await _apiFetch(`/blocks?week_start=${weekStartIsoDate}`);
+        _cachedBlocks = Array.isArray(list) ? list.map(_normalizeBlock) : [];
+    } catch (e) {
+        console.error('[weekly] fetchBlocks:', e);
+        _cachedBlocks = [];
+    }
+    return _cachedBlocks;
 }
 
-/** Returns array of Date objects for the week containing referenceDate, per prefs. */
+export function getBlocks() {
+    return _cachedBlocks;
+}
+
+export function getCurrentWeekStart() {
+    return _currentWeekStart;
+}
+
+export async function createBlock(block) {
+    try {
+        const saved = await _apiFetch('/blocks', {
+            method: 'POST',
+            body: JSON.stringify(block),
+        });
+        if (!saved) return null;
+        const norm = _normalizeBlock(saved);
+        _cachedBlocks.push(norm);
+        return norm;
+    } catch (e) {
+        console.error('[weekly] createBlock:', e);
+        alert(`No se pudo crear el bloque: ${e.message}`);
+        return null;
+    }
+}
+
+export async function updateBlock(blockId, updates) {
+    try {
+        const saved = await _apiFetch(`/blocks/${blockId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(updates),
+        });
+        if (!saved) return null;
+        const norm = _normalizeBlock(saved);
+        const idx = _cachedBlocks.findIndex(b => b.id === blockId);
+        if (idx !== -1) _cachedBlocks[idx] = norm;
+        return norm;
+    } catch (e) {
+        console.error('[weekly] updateBlock:', e);
+        alert(`No se pudo actualizar el bloque: ${e.message}`);
+        return null;
+    }
+}
+
+export async function removeBlock(blockId) {
+    try {
+        await _apiFetch(`/blocks/${blockId}`, { method: 'DELETE' });
+        _cachedBlocks = _cachedBlocks.filter(b => b.id !== blockId);
+        return true;
+    } catch (e) {
+        console.error('[weekly] removeBlock:', e);
+        alert(`No se pudo eliminar el bloque: ${e.message}`);
+        return false;
+    }
+}
+
+function _normalizeBlock(b) {
+    return {
+        id:            b.id,
+        week_start:    b.week_start,
+        day:           b.day_of_week,
+        block_type:    b.block_type,
+        task_id:       b.task_id ?? null,
+        activity_id:   b.activity_id ?? null,
+        title:         b.title ?? '',
+        color:         b.color ?? null,
+        start_time:    _trimTime(b.start_time),
+        end_time:      _trimTime(b.end_time),
+        notes:         b.notes ?? null,
+        priority:      b.priority ?? null,
+        column_status: b.column_status ?? null,
+        item_type:     b.item_type ?? null,
+    };
+}
+
+function _trimTime(t) {
+    if (!t) return '';
+    // Backend devuelve "HH:MM:SS"; la UI trabaja en "HH:MM".
+    return String(t).slice(0, 5);
+}
+
+// ── Helpers puros ────────────────────────────────────────────────────────────
+
 export function getWeekDays(referenceDate, prefs) {
     const { week_start_day, week_end_day } = prefs;
     const date = new Date(referenceDate);
@@ -80,6 +180,14 @@ export function getWeekDays(referenceDate, prefs) {
         cur.setDate(cur.getDate() + 1);
     }
     return days;
+}
+
+export function weekStartIso(referenceDate, prefs) {
+    const d = getWeekDays(referenceDate, prefs)[0];
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
 }
 
 export function timeToMinutes(t) {

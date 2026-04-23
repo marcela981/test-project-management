@@ -35,6 +35,11 @@ async function deckFetch(path) {
             ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
     });
+    if (res.status === 401) {
+        flushActiveTimers();
+        logout();
+        return;
+    }
     if (!res.ok) throw new Error(`Deck error ${res.status}: ${res.statusText}`);
     return res.json();
 }
@@ -99,37 +104,6 @@ export async function saveTime(taskId, timeSpent, subtaskId = null, feedback = n
     }
 
     save();
-}
-
-export async function setTaskTime(taskId, newSeconds) {
-    const task = STATE.tasks.find(t => t.id === taskId);
-    if (!task) return;
-
-    const diff = newSeconds - task.timeSpent;
-    task.timeSpent = newSeconds;
-
-    if (!task.timeLog) task.timeLog = [];
-    const today = new Date().toISOString().split('T')[0];
-    const logEntry = task.timeLog.find(e => e.date === today);
-    if (logEntry) {
-        logEntry.seconds = Math.max(0, logEntry.seconds + diff);
-        if (logEntry.seconds === 0) task.timeLog = task.timeLog.filter(e => e.date !== today);
-    } else if (diff > 0) {
-        task.timeLog.push({ date: today, seconds: diff });
-    }
-
-    if (CONFIG.BACKEND_URL) {
-        const endpoint = _isActivity(taskId)
-            ? `/activities/${taskId}`
-            : `/tareas/${taskId}`;
-        await apiFetch(endpoint, {
-            method: 'PATCH',
-            body: JSON.stringify({ timeSpent: newSeconds, timeLog: task.timeLog }),
-        });
-    }
-
-    save();
-    return task;
 }
 
 export async function createTask(data) {

@@ -157,9 +157,6 @@ export function createTaskCard(task) {
                     <button class="task-dropdown-item" data-action="edit-task" data-task-id="${task.id}">
                         <i class="fas fa-pencil-alt"></i> Editar
                     </button>
-                    <button class="task-dropdown-item" data-action="task-detail" data-task-id="${task.id}">
-                        <i class="fas fa-expand"></i> Detalle
-                    </button>
                     ${(task.column === 'completed' || (task.type === 'activity' && task.progress === 100)) ? `
                     <button class="task-dropdown-item" data-action="reopen-task" data-task-id="${task.id}">
                         <i class="fas fa-undo"></i> ¿No has terminado? Reabrir

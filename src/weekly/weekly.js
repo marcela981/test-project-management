@@ -1,8 +1,11 @@
 /** Vista Weekly Tracker: navegación, indicadores, columnas de días y bloques. */
 
+import { STATE } from '../core/state.js';
 import {
-    MOCK_TASKS, loadBlocks, removeBlock, updateBlock,
-    getPreferences, getWeekDays, timeToMinutes, blockDurationH, dayHours,
+    fetchPreferences, getPreferences,
+    fetchBlocks, getBlocks, updateBlock, removeBlock,
+    getWeekDays, weekStartIso,
+    timeToMinutes, blockDurationH, dayHours,
 } from './weekly-data.js';
 import { openBlockModal } from './weekly-modal.js';
 
@@ -19,6 +22,7 @@ let _refDate       = new Date();
 let _container     = null;
 let _dragBlockId   = null;
 let _dragTaskId    = null;
+let _weekStartIso  = null;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -32,6 +36,7 @@ export function renderWeekly(container) {
         container._weeklyInit = true;
         _setupDragDrop();
         window.addEventListener('preferences-updated', () => _render());
+        window.addEventListener('resize', _updateStickyMetrics);
     }
 }
 
@@ -51,12 +56,12 @@ export function handleWeeklyClick(action, el) {
             return true;
         case 'weekly-add-block': {
             const day = parseInt(el.dataset.day, 10);
-            openBlockModal(day, () => _render());
+            openBlockModal(day, _weekStartIso, () => _render());
             return true;
         }
         case 'weekly-remove-block': {
-            removeBlock(parseInt(el.dataset.blockId, 10));
-            _render();
+            const blockId = parseInt(el.dataset.blockId, 10);
+            removeBlock(blockId).then(ok => { if (ok) _render(); });
             return true;
         }
     }
@@ -67,18 +72,23 @@ export function handleWeeklyClick(action, el) {
 // Render
 // ---------------------------------------------------------------------------
 
-function _render() {
+async function _render() {
     if (!_container) return;
-    const prefs  = getPreferences();
-    const days   = getWeekDays(_refDate, prefs);
-    const blocks = loadBlocks();
+
+    await fetchPreferences();
+    const prefs = getPreferences();
+    const days  = getWeekDays(_refDate, prefs);
+    _weekStartIso = weekStartIso(_refDate, prefs);
+
+    await fetchBlocks(_weekStartIso);
+    const blocks = getBlocks();
     const today  = _today();
 
     _container.innerHTML = `
         <div class="weekly-view">
-            ${_renderIndicators(days, blocks)}
             ${_renderNav(days)}
             <div class="weekly-scroll">
+                ${_renderIndicators(days, blocks)}
                 <div class="weekly-grid">
                     ${_renderTimeAxis()}
                     <div class="weekly-columns" id="weeklyColumns">
@@ -88,11 +98,26 @@ function _render() {
             </div>
         </div>`;
 
+    _updateStickyMetrics();
+}
+
+// Mide el chrome fijo de la página (.header + .app-nav) y la altura real
+// de indicators / col-header para que los `sticky` queden perfectamente
+// alineados en cualquier viewport.
+function _updateStickyMetrics() {
     requestAnimationFrame(() => {
+        if (!_container) return;
+
+        const pageHeader = document.querySelector('.header');
+        const appNav     = document.querySelector('.app-nav');
+        const chrome     = (pageHeader?.offsetHeight ?? 0) + (appNav?.offsetHeight ?? 0);
+        document.documentElement.style.setProperty('--weekly-page-chrome', chrome + 'px');
+
         const view       = _container.querySelector('.weekly-view');
         const indicators = _container.querySelector('.weekly-indicators');
         const colHeader  = _container.querySelector('.weekly-col-header');
         if (!view) return;
+
         if (indicators) view.style.setProperty('--weekly-indicators-height', indicators.offsetHeight + 'px');
         if (colHeader)  view.style.setProperty('--weekly-col-header-height', colHeader.offsetHeight + 'px');
     });
@@ -109,10 +134,14 @@ function _renderIndicators(days, blocks) {
     const unplannedNames = unplanned.map(dn => DAY_NAMES[dn]).join(', ');
     const upColor        = unplanned.length === 0 ? 'green' : 'yellow';
 
-    // Card 2 – tareas urgentes sin asignar esta semana
-    const assignedIds = new Set(visBlocks.map(b => b.task_id).filter(Boolean));
-    const urgent      = MOCK_TASKS.filter(t =>
-        !t.completed && (t.priority === 'high' || t.priority === 'urgent') && !assignedIds.has(t.id)
+    // Card 2 – tareas urgentes sin asignar esta semana (desde STATE.tasks)
+    const assignedIds = new Set(
+        visBlocks.map(b => b.task_id ?? b.activity_id).filter(Boolean).map(String)
+    );
+    const urgent = STATE.tasks.filter(t =>
+        !_taskIsCompleted(t)
+        && (t.priority === 'high' || t.priority === 'urgent')
+        && !assignedIds.has(String(t.id))
     );
     const visible3  = urgent.slice(0, 3);
     const moreCount = urgent.length - visible3.length;
@@ -147,7 +176,7 @@ function _renderIndicators(days, blocks) {
                             draggable="true"
                             data-urgent-task-id="${t.id}">
                             <span class="priority-dot ${t.priority}"></span>
-                            <span>${t.title}</span>
+                            <span>${_esc(t.title ?? '')}</span>
                         </li>`).join('')}
                     ${moreCount > 0
                         ? `<li class="weekly-indicator-sub" style="padding:.25rem .5rem">+${moreCount} más...</li>`
@@ -209,12 +238,12 @@ function _renderTimeAxis() {
 // ── Day column ───────────────────────────────────────────────────────────────
 
 function _renderColumn(date, blocks, today) {
-    const dn        = date.getDay();
-    const isToday   = date.getTime() === today.getTime();
-    const colBlocks = blocks.filter(b => b.day === dn && _blockVisible(b));
-    const hasBlocks = colBlocks.length > 0;
-    const h         = dayHours(colBlocks, dn);
-    const loadPct   = Math.min(100, Math.round((h / 8) * 100));
+    const dn         = date.getDay();
+    const isToday    = date.getTime() === today.getTime();
+    const colBlocks  = blocks.filter(b => b.day === dn && _blockVisible(b));
+    const hasBlocks  = colBlocks.length > 0;
+    const h          = dayHours(colBlocks, dn);
+    const loadPct    = Math.min(100, Math.round((h / 8) * 100));
     const overloaded = h > 10 ? 'overloaded' : '';
 
     const totalSlots = HOUR_END - HOUR_START + 1;
@@ -259,21 +288,24 @@ function _renderBlock(block) {
     const durH       = blockDurationH(block);
     const isPersonal = block.block_type === 'personal';
 
-    let title = '', priorityCls = '', typeIcon = '';
+    let priorityCls = '';
+    let typeIcon    = '';
+    let blockClass  = '';
+    let colorStyle  = '';
+    const title     = block.title || 'Bloque';
+
     if (isPersonal) {
-        title = block.title;
+        blockClass = 'personal-block';
+        colorStyle = block.color ? `background:${block.color};` : '';
     } else {
-        const task = MOCK_TASKS.find(t => t.id === block.task_id);
-        title       = task?.title ?? 'Tarea';
-        priorityCls = `priority-${task?.priority ?? 'medium'}`;
-        typeIcon    = task?.type === 'activity'
-            ? '<i class="fas fa-bolt" style="font-size:.5625rem;margin-right:2px;opacity:.7"></i>'
-            : '';
+        priorityCls = `priority-${block.priority ?? 'medium'}`;
+        blockClass  = `task-block ${priorityCls}`;
+        if (block.block_type === 'activity' || block.item_type) {
+            typeIcon = '<i class="fas fa-bolt" style="font-size:.5625rem;margin-right:2px;opacity:.7"></i>';
+        }
     }
 
-    const styleBase  = `top:${top}px;height:${height}px`;
-    const colorStyle = isPersonal ? `background:${block.color};` : '';
-    const blockClass = isPersonal ? 'personal-block' : `task-block ${priorityCls}`;
+    const styleBase = `top:${top}px;height:${height}px`;
 
     return `
         <div class="weekly-block ${blockClass}"
@@ -306,7 +338,7 @@ function _setupDragDrop() {
             blockEl.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
         } else if (urgentEl) {
-            _dragTaskId  = parseInt(urgentEl.dataset.urgentTaskId, 10);
+            _dragTaskId  = urgentEl.dataset.urgentTaskId;
             _dragBlockId = null;
             urgentEl.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'copy';
@@ -332,7 +364,7 @@ function _setupDragDrop() {
         if (col && !col.contains(e.relatedTarget)) col.classList.remove('drop-target');
     });
 
-    _container.addEventListener('drop', e => {
+    _container.addEventListener('drop', async e => {
         const col = e.target.closest('.weekly-col-body');
         if (!col) return;
         e.preventDefault();
@@ -340,10 +372,10 @@ function _setupDragDrop() {
         const targetDay = parseInt(col.dataset.day, 10);
 
         if (_dragBlockId !== null) {
-            updateBlock(_dragBlockId, { day: targetDay });
-            _render();
+            const ok = await updateBlock(_dragBlockId, { day_of_week: targetDay });
+            if (ok) _render();
         } else if (_dragTaskId !== null) {
-            openBlockModal(targetDay, () => _render(), _dragTaskId);
+            openBlockModal(targetDay, _weekStartIso, () => _render(), _dragTaskId);
         }
         _dragBlockId = null;
         _dragTaskId  = null;
@@ -353,9 +385,19 @@ function _setupDragDrop() {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function _blockVisible(block) {
-    if (!block.task_id) return true;
-    const task = MOCK_TASKS.find(t => t.id === block.task_id);
-    return task ? !task.completed : false;
+    // El backend ya filtra tareas completadas/eliminadas. En personales siempre visible.
+    if (block.block_type === 'personal') return true;
+
+    const id = block.task_id ?? block.activity_id;
+    if (!id) return true;
+    const task = STATE.tasks.find(t => String(t.id) === String(id));
+    if (!task) return true; // si no está en el board local, mostramos lo que vino del backend
+    return !_taskIsCompleted(task);
+}
+
+function _taskIsCompleted(task) {
+    if (task.type === 'activity') return (task.progress ?? 0) >= 100;
+    return task.column === 'completed';
 }
 
 function _today() {
@@ -365,5 +407,5 @@ function _today() {
 }
 
 function _esc(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

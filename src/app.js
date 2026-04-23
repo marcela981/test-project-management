@@ -3,6 +3,7 @@
 import { STATE }            from './core/state.js';
 import { load }             from './core/storage.js';
 import { fetchTasks, reopenTask } from './api/api.js';
+import { drainPendingTimeOps } from './api/timeLogs.js';
 import { renderBoard, toggleCompletedAccordion } from './board/render.js';
 import { setupDragAndDrop } from './board/dragDrop.js';
 import { initAuth }         from './auth/auth.js';
@@ -17,12 +18,10 @@ import { renderAdmin }      from './admin/admin.js';
 import {
     openNewTaskModal, openEditTaskModal,
     addSubtaskInput, submitNewTask, confirmDeleteTask,
+    switchTab, toggleSubtask, 
+    openAddTimeLog, cancelAddTimeLog, saveNewTimeLog, 
+    openEditTimeLog, cancelEditTimeLog, saveEditTimeLog, deleteTimeLogPrompt
 } from './tasks/taskForm.js';
-
-import {
-    openTaskDetail, toggleSubtask,
-    openTimeEdit, cancelTimeEdit, saveTimeEdit,
-} from './tasks/taskDetail.js';
 
 import {
     openImportDeckModal, selectDeckBoard,
@@ -124,7 +123,6 @@ async function handleClick(e) {
         case 'new-task':          openNewTaskModal(type); break;
         case 'edit-task':         openEditTaskModal(taskId); break;
         case 'delete-task':       await confirmDeleteTask(taskId); break;
-        case 'task-detail':       openTaskDetail(taskId); break;
         case 'submit-task':       await submitNewTask(); break;
         case 'toggle-subtask':    toggleSubtask(taskId, subtaskId); break;
 
@@ -132,10 +130,16 @@ async function handleClick(e) {
         case 'add-subtask':       addSubtaskInput(); break;
         case 'remove-parent':     el.parentElement.remove(); break;
 
+        case 'switch-tab':        switchTab(el.dataset.tab); break;
+
         // Tiempo
-        case 'open-time-edit':    openTimeEdit(taskId); break;
-        case 'save-time-edit':    await saveTimeEdit(taskId); break;
-        case 'cancel-time-edit':  cancelTimeEdit(); break;
+        case 'add-time-log':      openAddTimeLog(); break;
+        case 'cancel-new-time-log': cancelAddTimeLog(); break;
+        case 'save-new-time-log': saveNewTimeLog(); break;
+        case 'edit-time-log':     openEditTimeLog(el.dataset.logId); break;
+        case 'cancel-edit-time-log': cancelEditTimeLog(el.dataset.logId); break;
+        case 'save-edit-time-log': saveEditTimeLog(el.dataset.logId, el.dataset.logDate); break;
+        case 'delete-time-log':   deleteTimeLogPrompt(el.dataset.logId); break;
 
         // Timer
         case 'start-timer':       startTimer(taskId); break;
@@ -247,7 +251,10 @@ async function init() {
     renderBoard();
     setupDragAndDrop();
 
-    if (_currentUser) setupNav(_currentUser, isTechTeam);
+    if (_currentUser) {
+        setupNav(_currentUser, isTechTeam);
+        drainPendingTimeOps();
+    }
 
     // Weekly tab is always available (no auth required)
     document.querySelectorAll('.nav-tab[data-view="weekly"]').forEach(tab => {

@@ -87,9 +87,9 @@ export function formatLogDate(dateStr) {
 
 export function getActivityTypeLabel(type) {
     const labels = {
-        meeting:  'Meeting',
-        training: 'Training',
-        event:    'Event',
+        meeting:  'Meeting / Call',
+        email:    'Email & Correspondence',
+        planning: 'Planning & Scheduling',
         other:    'Other'
     };
     return labels[type] ?? type;

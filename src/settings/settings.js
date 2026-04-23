@@ -1,11 +1,11 @@
 /** Panel lateral de configuración global. */
 
-import { getPreferences, savePreferences } from '../weekly/weekly-data.js';
+import { fetchPreferences, savePreferences } from '../weekly/weekly-data.js';
 
-export function openSettings() {
-    _loadIntoForm();
+export async function openSettings() {
     document.getElementById('settingsPanel').classList.add('open');
     document.getElementById('settingsOverlay').classList.add('open');
+    await _loadIntoForm();
 }
 
 export function closeSettings() {
@@ -13,15 +13,15 @@ export function closeSettings() {
     document.getElementById('settingsOverlay').classList.remove('open');
 }
 
-export function saveSettings() {
+export async function saveSettings() {
     const startDay = parseInt(document.getElementById('settingWeekStart').value, 10);
     const endDay   = parseInt(document.getElementById('settingWeekEnd').value, 10);
-    savePreferences({ week_start_day: startDay, week_end_day: endDay });
+    await savePreferences({ week_start_day: startDay, week_end_day: endDay });
     closeSettings();
 }
 
-function _loadIntoForm() {
-    const prefs = getPreferences();
+async function _loadIntoForm() {
+    const prefs = await fetchPreferences();
     document.getElementById('settingWeekStart').value = prefs.week_start_day;
     document.getElementById('settingWeekEnd').value   = prefs.week_end_day;
 }
