@@ -2,7 +2,7 @@
 
 import { STATE }            from './core/state.js';
 import { load }             from './core/storage.js';
-import { fetchTasks, reopenTask } from './api/api.js';
+import { fetchTasks, reopenTask, completeTask } from './api/api.js';
 import { drainPendingTimeOps } from './api/timeLogs.js';
 import { renderBoard, toggleCompletedAccordion } from './board/render.js';
 import { setupDragAndDrop } from './board/dragDrop.js';
@@ -26,10 +26,11 @@ import {
 import {
     openImportDeckModal, selectDeckBoard,
     toggleDeckSelection, importSelectedDeckCards, filterDeckCards,
+    toggleDeckFilterPanel, toggleDeckTag, selectAllDeckTags, clearAllDeckTags,
 } from './deck/deckImport.js';
 
 import { confirmCompletion } from './timer/completionModal.js';
-import { renderWeekly, handleWeeklyClick } from './weekly/weekly.js';
+import { renderCalendar, handleCalendarClick } from './calendar/calendar-router.js';
 import { submitBlock, handleWeeklyModalEvent } from './weekly/weekly-modal.js';
 import { initRetroAccordion } from './tasks/retroactiveAccordion.js';
 import { openSettings, closeSettings, saveSettings } from './settings/settings.js';
@@ -71,7 +72,7 @@ function navigateTo(view) {
             if (_currentUser) renderAdmin(container, _currentUser);
             break;
         case 'weekly':
-            renderWeekly(container);
+            renderCalendar(container);
             break;
     }
 }
@@ -153,7 +154,7 @@ async function handleClick(e) {
 
         // Notificaciones de timer
         case 'close-timer-notif': closeTimerNotif(); break;
-        case 'timer-notif-no':    timerNotifNo(taskId, type); break;
+        case 'timer-notif-no':    await timerNotifNo(taskId, type); break;
         case 'close-timer-action': closeTimerAction(); break;
         case 'timer-finalize':    await timerActionFinalize(taskId, type); break;
         case 'timer-stop':        timerActionStop(taskId, type); break;
@@ -161,13 +162,25 @@ async function handleClick(e) {
         // Reabrir tarea completada
         case 'reopen-task':       await reopenTask(taskId); renderBoard(); break;
 
+        // Finalizar tarea desde Overview
+        case 'finalize-task': {
+            await completeTask(taskId);
+            closeModal('modalNewTask');
+            renderBoard();
+            break;
+        }
+
         // Acordeón de completadas
         case 'toggle-completed-accordion': toggleCompletedAccordion(el.dataset.colKey); break;
 
         // Deck
-        case 'open-import-deck':  await openImportDeckModal(); break;
-        case 'toggle-deck':       toggleDeckSelection(deckId); break;
-        case 'import-deck-cards': await importSelectedDeckCards(); break;
+        case 'open-import-deck':          await openImportDeckModal(); break;
+        case 'toggle-deck':               toggleDeckSelection(deckId); break;
+        case 'import-deck-cards':         await importSelectedDeckCards(); break;
+        case 'toggle-deck-filter-panel':  toggleDeckFilterPanel(); break;
+        case 'toggle-deck-tag':           toggleDeckTag(el.dataset.tag); break;
+        case 'toggle-deck-select-all':    selectAllDeckTags(); break;
+        case 'toggle-deck-select-none':   clearAllDeckTags(); break;
 
         // Skills – endorse
         case 'submit-endorse':    await submitEndorse(); break;
@@ -185,7 +198,11 @@ async function handleClick(e) {
 
         default:
             if (action?.startsWith('weekly-')) {
-                if (!handleWeeklyModalEvent(action, el)) handleWeeklyClick(action, el);
+                if (!handleWeeklyModalEvent(action, el)) handleCalendarClick(action, el);
+            } else if (action?.startsWith('calendar-') || action?.startsWith('day-') ||
+                       action?.startsWith('month-') || action?.startsWith('quarter-') ||
+                       action?.startsWith('semester-') || action?.startsWith('annual-')) {
+                handleCalendarClick(action, el);
             }
             break;
     }

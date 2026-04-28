@@ -3,30 +3,42 @@
 import { STATE } from '../core/state.js';
 import { getBlocks, createBlock, updateBlock, hasOverlap } from './weekly-data.js';
 import { openModal, closeModal, registerDirtyCheck } from '../shared/modal.js';
+import { formStateToRRule } from '../calendar/recurrence/rrule-expander.js';
 
 const COLORS     = ['#e8b86d', '#f97316', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444'];
 const DAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-let _formSnapshot     = null;
-let _onSaved          = null;
-let _pendingDay       = null;
-let _pendingWeekStart = null;
-let _preselectedTask  = null;
-let _selectedColor    = COLORS[0];
-let _mode             = 'create'; // 'create' | 'edit'
-let _pendingBlock     = null;
-let _defaultStart     = '09:00';
-let _defaultEnd       = '10:00';
+let _formSnapshot        = null;
+let _onSaved             = null;
+let _pendingDay          = null;
+let _pendingWeekStart    = null;
+let _preselectedTask     = null;
+let _selectedColor       = COLORS[0];
+let _mode                = 'create'; // 'create' | 'edit'
+let _pendingBlock        = null;
+let _defaultStart        = '09:00';
+let _defaultEnd          = '10:00';
+let _selectedRecurrence  = 'none';
+let _recurrenceUntil     = '';
 
 function _getBlockFormState() {
     return {
-        type:  document.getElementById('weeklyBlockType')?.value ?? '',
-        task:  document.getElementById('weeklyBlockTask')?.value ?? '',
-        title: (document.getElementById('weeklyBlockTitle')?.value ?? '').trim(),
-        day:   document.getElementById('weeklyBlockDay')?.value ?? '',
-        start: document.getElementById('weeklyBlockStart')?.value ?? '',
-        end:   document.getElementById('weeklyBlockEnd')?.value ?? '',
+        type:       document.getElementById('weeklyBlockType')?.value ?? '',
+        task:       document.getElementById('weeklyBlockTask')?.value ?? '',
+        title:      (document.getElementById('weeklyBlockTitle')?.value ?? '').trim(),
+        day:        document.getElementById('weeklyBlockDay')?.value ?? '',
+        start:      document.getElementById('weeklyBlockStart')?.value ?? '',
+        end:        document.getElementById('weeklyBlockEnd')?.value ?? '',
+        freq:       document.getElementById('weeklyBlockRecurrence')?.value ?? 'none',
+        interval:   document.getElementById('weeklyRruleInterval')?.value ?? '1',
+        unit:       document.getElementById('weeklyRruleUnit')?.value ?? 'weekly',
+        days:       _getSelectedRruleDays(),
+        until:      document.getElementById('weeklyBlockRecurrenceUntil')?.value ?? '',
     };
+}
+
+function _getSelectedRruleDays() {
+    return [...(document.querySelectorAll('.rrule-day-cb:checked') ?? [])].map(cb => cb.value);
 }
 
 function _isBlockFormDirty() {
@@ -44,25 +56,29 @@ export function openBlockModal(dayOrOptions, weekStartOrSaved, onSaved, preselec
     if (dayOrOptions !== null && typeof dayOrOptions === 'object') {
         const { mode = 'create', day, weekStartIso, preselectedTaskId: tid, block,
                 startTime, endTime } = dayOrOptions;
-        _mode             = mode;
-        _pendingBlock     = block ?? null;
-        _onSaved          = weekStartOrSaved;
-        _pendingDay       = day;
-        _pendingWeekStart = weekStartIso;
-        _preselectedTask  = tid != null ? String(tid) : null;
-        _selectedColor    = block?.color ?? COLORS[0];
-        _defaultStart     = startTime ?? '09:00';
-        _defaultEnd       = endTime   ?? '10:00';
+        _mode                = mode;
+        _pendingBlock        = block ?? null;
+        _onSaved             = weekStartOrSaved;
+        _pendingDay          = day;
+        _pendingWeekStart    = weekStartIso;
+        _preselectedTask     = tid != null ? String(tid) : null;
+        _selectedColor       = block?.color ?? COLORS[0];
+        _defaultStart        = startTime ?? '09:00';
+        _defaultEnd          = endTime   ?? '10:00';
+        _selectedRecurrence  = block?.recurrence ?? 'none';
+        _recurrenceUntil     = block?.recurrence_until ?? '';
     } else {
-        _mode             = 'create';
-        _pendingBlock     = null;
-        _onSaved          = onSaved;
-        _pendingDay       = dayOrOptions;
-        _pendingWeekStart = weekStartOrSaved;
-        _preselectedTask  = preselectedTaskId != null ? String(preselectedTaskId) : null;
-        _selectedColor    = COLORS[0];
-        _defaultStart     = '09:00';
-        _defaultEnd       = '10:00';
+        _mode                = 'create';
+        _pendingBlock        = null;
+        _onSaved             = onSaved;
+        _pendingDay          = dayOrOptions;
+        _pendingWeekStart    = weekStartOrSaved;
+        _preselectedTask     = preselectedTaskId != null ? String(preselectedTaskId) : null;
+        _selectedColor       = COLORS[0];
+        _defaultStart        = '09:00';
+        _defaultEnd          = '10:00';
+        _selectedRecurrence  = 'none';
+        _recurrenceUntil     = '';
     }
     _buildContent();
     openModal('modalWeeklyBlock');
@@ -84,6 +100,15 @@ export async function submitBlock() {
     if (em <= sm) { alert('La hora de fin debe ser mayor a la hora de inicio.'); return; }
 
     if (!_pendingWeekStart) { alert('No se pudo determinar la semana. Recarga la vista.'); return; }
+
+    const rruleState = _getBlockFormState();
+    const rruleStr   = formStateToRRule({
+        freq:     rruleState.freq,
+        interval: rruleState.interval,
+        unit:     rruleState.unit,
+        days:     rruleState.days,
+        until:    rruleState.until,
+    });
 
     let payload;
     if (type === 'task') {
@@ -118,6 +143,8 @@ export async function submitBlock() {
         };
     }
 
+    if (rruleStr) payload.rrule_string = rruleStr;
+
     const local        = getBlocks();
     const overlapCheck = { day, start_time: startTime, end_time: endTime };
     const excludeId    = _mode === 'edit' ? _pendingBlock?.id : null;
@@ -126,8 +153,14 @@ export async function submitBlock() {
         if (!ok) return;
     }
 
+    let scope = null;
+    if (_mode === 'edit' && (_pendingBlock?.series_id || _pendingBlock?.is_virtual)) {
+        scope = await askScope();
+        if (scope === null) return;
+    }
+
     const saved = _mode === 'edit'
-        ? await updateBlock(_pendingBlock.id, payload)
+        ? await updateBlock(_pendingBlock.id, payload, scope)
         : await createBlock(payload);
     if (!saved) return;
 
@@ -253,6 +286,8 @@ function _buildContent() {
                        value="${isEdit ? block.end_time : _defaultEnd}">
             </div>
         </div>
+
+        ${_renderRecurrenceFields()}
     `;
 
     const modalEl   = document.getElementById('modalWeeklyBlock');
@@ -263,7 +298,108 @@ function _buildContent() {
         ? 'Guardar cambios'
         : '<i class="fas fa-plus"></i> Agregar';
 
+    _bindRecurrenceEvents();
     _formSnapshot = _getBlockFormState();
+}
+
+function _renderRecurrenceFields() {
+    const freq = _selectedRecurrence;
+    const isCustom = freq === 'custom';
+    const isWeekly = freq === 'weekly' || (isCustom);
+    const showUntil = freq !== 'none';
+
+    const DAY_OPTIONS = [
+        ['MO','Lun'],['TU','Mar'],['WE','Mié'],['TH','Jue'],['FR','Vie'],['SA','Sáb'],['SU','Dom'],
+    ];
+
+    const dayChecks = DAY_OPTIONS.map(([val, label]) =>
+        `<label class="rrule-day-label">
+            <input type="checkbox" class="rrule-day-cb" value="${val}"> ${label}
+        </label>`
+    ).join('');
+
+    return `
+        <div class="form-group">
+            <label class="form-label" for="weeklyBlockRecurrence">Repetición</label>
+            <select id="weeklyBlockRecurrence" class="form-select">
+                <option value="none"${freq === 'none'    ? ' selected' : ''}>No repetir</option>
+                <option value="daily"${freq === 'daily'  ? ' selected' : ''}>Cada día</option>
+                <option value="weekly"${freq === 'weekly'? ' selected' : ''}>Cada semana</option>
+                <option value="monthly"${freq === 'monthly'?' selected':''}>Cada mes</option>
+                <option value="yearly"${freq === 'yearly' ? ' selected' : ''}>Cada año</option>
+                <option value="custom"${freq === 'custom' ? ' selected' : ''}>Personalizado...</option>
+            </select>
+        </div>
+
+        <div id="weeklyRecurrenceCustomGroup" class="form-group" style="${!isCustom ? 'display:none' : ''}">
+            <div class="rrule-custom-row">
+                <span class="rrule-custom-label">Cada</span>
+                <input type="number" id="weeklyRruleInterval" class="form-input rrule-interval"
+                       value="1" min="1" max="99">
+                <select id="weeklyRruleUnit" class="form-select rrule-unit">
+                    <option value="daily">días</option>
+                    <option value="weekly" selected>semanas</option>
+                    <option value="monthly">meses</option>
+                    <option value="yearly">años</option>
+                </select>
+            </div>
+            <div id="weeklyRruleDaysGroup" class="rrule-days-group" style="${!isWeekly ? 'display:none' : ''}">
+                ${dayChecks}
+            </div>
+        </div>
+
+        <div class="form-group" id="weeklyRecurrenceUntilGroup"
+             style="${!showUntil ? 'display:none' : ''}">
+            <label class="form-label" for="weeklyBlockRecurrenceUntil">Hasta (opcional)</label>
+            <input type="date" id="weeklyBlockRecurrenceUntil" class="form-input"
+                   value="${_esc(_recurrenceUntil)}">
+        </div>`;
+}
+
+function _bindRecurrenceEvents() {
+    const freqSel  = document.getElementById('weeklyBlockRecurrence');
+    const customGr = document.getElementById('weeklyRecurrenceCustomGroup');
+    const untilGr  = document.getElementById('weeklyRecurrenceUntilGroup');
+    const unitSel  = document.getElementById('weeklyRruleUnit');
+    const daysGr   = document.getElementById('weeklyRruleDaysGroup');
+
+    function _syncVisibility() {
+        const freq     = freqSel?.value ?? 'none';
+        const isCustom = freq === 'custom';
+        const showDays = isCustom && (unitSel?.value ?? 'weekly') === 'weekly';
+        if (customGr) customGr.style.display = isCustom ? '' : 'none';
+        if (untilGr)  untilGr.style.display  = freq !== 'none' ? '' : 'none';
+        if (daysGr)   daysGr.style.display   = showDays ? '' : 'none';
+    }
+
+    freqSel?.addEventListener('change', _syncVisibility);
+    unitSel?.addEventListener('change', _syncVisibility);
+}
+
+export function askScope() {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'scope-dialog-overlay';
+        overlay.innerHTML = `
+            <div class="scope-dialog">
+                <p class="scope-dialog-question">Aplicar cambios a:</p>
+                <div class="scope-dialog-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" data-scope="this">Sólo este</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-scope="future">Este y futuros</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-scope="all">Toda la serie</button>
+                </div>
+                <button type="button" class="btn btn-sm scope-dialog-cancel" data-scope="cancel">Cancelar</button>
+            </div>`;
+
+        overlay.addEventListener('click', e => {
+            const btn = e.target.closest('[data-scope]');
+            if (!btn) return;
+            overlay.remove();
+            resolve(btn.dataset.scope === 'cancel' ? null : btn.dataset.scope);
+        });
+
+        document.body.appendChild(overlay);
+    });
 }
 
 function _toMins(t) {

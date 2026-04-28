@@ -1,0 +1,331 @@
+/* ============================================================
+   Calendar shell & shared chrome
+   ============================================================ */
+
+.calendar-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.cal-view-toolbar {
+    display: flex;
+    gap: .25rem;
+    padding: .5rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    position: sticky;
+    top: var(--weekly-page-chrome, 0);
+    z-index: 10;
+    flex-wrap: wrap;
+}
+
+.cal-view-tab {
+    padding: .3rem .75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: .8125rem;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+.cal-view-tab:hover   { background: var(--bg-secondary); color: var(--text-primary); }
+.cal-view-tab.active  { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+
+.cal-view-host { flex: 1; overflow: auto; }
+
+/* Shared nav bar (day / month / quarter / semester / annual) */
+.cal-nav-bar {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .6rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.cal-nav-btn {
+    padding: .25rem .6rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: .8125rem;
+    display: flex;
+    align-items: center;
+    gap: .25rem;
+    transition: background .15s;
+}
+.cal-nav-btn:hover { background: var(--bg-secondary); }
+
+.cal-nav-title {
+    font-weight: 600;
+    font-size: 1rem;
+    flex: 1;
+    text-align: center;
+}
+
+/* ============================================================
+   Day view
+   ============================================================ */
+
+.day-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.day-view-nav {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .6rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.day-view-title {
+    flex: 1;
+    text-align: center;
+    font-weight: 600;
+    font-size: 1rem;
+}
+.day-view-title.today { color: var(--color-primary); }
+
+.day-view-scroll {
+    display: flex;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.day-time-axis {
+    width: 3.5rem;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border-color);
+}
+
+.day-time-slot {
+    display: flex;
+    align-items: flex-start;
+    padding: .125rem .25rem 0;
+    font-size: .6875rem;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
+    box-sizing: border-box;
+}
+
+.day-col-body {
+    flex: 1;
+    position: relative;
+    cursor: cell;
+}
+
+.day-block {
+    position: absolute;
+    border-radius: var(--radius-sm);
+    padding: .25rem .375rem;
+    font-size: .75rem;
+    color: #fff;
+    overflow: hidden;
+    cursor: pointer;
+    box-sizing: border-box;
+    right: auto;
+    box-shadow: 0 1px 3px rgba(0,0,0,.15);
+    transition: filter .1s;
+}
+.day-block:hover { filter: brightness(1.08); }
+
+.day-block-title {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.day-block-time {
+    font-size: .6875rem;
+    opacity: .9;
+}
+
+.day-now-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: var(--color-danger);
+    z-index: 5;
+    pointer-events: none;
+}
+.day-now-line::before {
+    content: '';
+    position: absolute;
+    left: -4px; top: -4px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--color-danger);
+}
+
+/* ============================================================
+   Month view
+   ============================================================ */
+
+.month-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.month-grid-wrap {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    border-left: 1px solid var(--border-color);
+    border-top: 1px solid var(--border-color);
+    flex: 1;
+}
+
+.month-hdr {
+    text-align: center;
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    padding: .375rem 0;
+    border-right: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.month-cell {
+    min-height: 5rem;
+    padding: .25rem .375rem;
+    border-right: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    cursor: default;
+}
+.month-cell.out    { background: var(--bg-secondary); color: var(--text-muted); }
+.month-cell.today  { background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
+
+.month-cell-num {
+    font-size: .8125rem;
+    font-weight: 600;
+    .today & { color: var(--color-primary); }
+}
+
+.month-badge {
+    font-size: .6875rem;
+    padding: .1rem .375rem;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+}
+.month-badge.lo  { background: color-mix(in srgb, var(--color-success) 20%, transparent); }
+.month-badge.mid { background: color-mix(in srgb, var(--color-warning, #f59e0b) 25%, transparent); }
+.month-badge.hi  { background: color-mix(in srgb, var(--color-danger)  25%, transparent); }
+
+.month-loading {
+    grid-column: 1/-1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: .875rem;
+    padding: 2rem;
+}
+
+/* ============================================================
+   Multi-cal views (quarter / semester / annual)
+   ============================================================ */
+
+.multi-cal-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.multi-cal-grid {
+    display: grid;
+    gap: 1rem;
+    padding: 1rem;
+    overflow-y: auto;
+    flex: 1;
+}
+.multi-cal-grid.cols-3 { grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }
+
+/* Mini calendar card */
+.mini-cal-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: .625rem;
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,.06));
+}
+
+.mini-cal-title {
+    font-weight: 600;
+    font-size: .875rem;
+    text-align: center;
+    margin-bottom: .4rem;
+    color: var(--text-primary);
+}
+
+.mini-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+}
+
+.mini-cal-sentinel { display: none; }
+
+.mini-cal-hdr {
+    text-align: center;
+    font-size: .625rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    padding: .125rem 0;
+}
+
+.mini-cal-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: .15rem .1rem;
+    border-radius: var(--radius-sm);
+    cursor: default;
+    min-height: 1.6rem;
+    position: relative;
+}
+.mini-cal-day.out   { color: var(--text-muted); opacity: .4; }
+.mini-cal-day.today { background: var(--color-primary); color: #fff; border-radius: 50%; }
+.mini-cal-day.has-tasks { font-weight: 600; }
+
+.mini-cal-num {
+    font-size: .6875rem;
+    line-height: 1;
+}
+
+.mini-cal-dot {
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    margin-top: 1px;
+}
+.mini-cal-dot.lo  { background: var(--color-success); }
+.mini-cal-dot.mid { background: var(--color-warning, #f59e0b); }
+.mini-cal-dot.hi  { background: var(--color-danger); }
+
+.mini-cal-skeleton .mini-cal-grid {
+    min-height: 9rem;
+    background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-primary) 50%, var(--bg-secondary) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: var(--radius-sm);
+}
+
+@keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Annual placeholder wraps a skeleton, gets replaced inline */
+.annual-month-placeholder { display: contents; }

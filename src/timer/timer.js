@@ -199,27 +199,28 @@ export function closeTimerNotif() {
     document.getElementById('modalTimerNotif').classList.remove('active');
 }
 
-export function timerNotifNo(taskId, type) {
+export async function timerNotifNo(taskId, type) {
     const task = STATE.tasks.find(t => t.id === taskId);
     if (!task) return;
 
     closeTimerNotif();
 
-    const label = type === 'activity' ? 'actividad' : 'tarea';
-    document.getElementById('timerActionBody').innerHTML = `
-        <p style="text-align:center; margin:0.5rem 0; font-size:1rem;">
-            ¿Deseas finalizar o detener la ${label}
-            <strong>"${task.title}"</strong>?
-        </p>`;
-    document.getElementById('timerActionFooter').innerHTML = `
-        <button class="btn btn-secondary" data-action="timer-stop" data-task-id="${taskId}" data-type="${type}">
-            <i class="fas fa-stop"></i> Detener
-        </button>
-        <button class="btn btn-primary" data-action="timer-finalize" data-task-id="${taskId}" data-type="${type}">
-            <i class="fas fa-check-double"></i> Finalizar
-        </button>`;
+    // Detener el timer activo y guardar el tiempo acumulado
+    const timer = STATE.timers[type];
+    if (timer?.taskId === taskId) {
+        clearInterval(timer.intervalId);
+        const elapsed = _elapsed(type);
+        const subtaskId = timer.subtaskId ?? null;
+        STATE.timers[type] = null;
+        saveTimers();
+        if (elapsed > 0) {
+            await saveTime(taskId, elapsed, subtaskId, null).catch(() => {});
+        }
+    }
 
-    document.getElementById('modalTimerAction').classList.add('active');
+    // Marcar la tarea como completada al 100% y persistir
+    await completeTask(taskId);
+    renderBoard();
 }
 
 export function closeTimerAction() {

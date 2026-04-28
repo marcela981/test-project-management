@@ -247,6 +247,15 @@ function renderResumenTab(task) {
             </div>`;
     }
 
+    if (!isComplete) {
+        html += `
+        <div class="overview-finalize-cta">
+            <button class="btn btn-primary" data-action="finalize-task" data-task-id="${task.id}">
+                <i class="fas fa-check-double"></i> ¿Ya finalizaste?
+            </button>
+        </div>`;
+    }
+
     document.getElementById('resumen-content').innerHTML = html;
 }
 

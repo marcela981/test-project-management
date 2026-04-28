@@ -18,21 +18,7 @@
     border: 2px solid transparent;
 }
 
-.deck-item:hover:not(.already-imported) { background: var(--color-border); }
-
-.deck-item.already-imported {
-    opacity: 0.5;
-    cursor: default;
-}
-
-.deck-item.already-imported .deck-item-checkbox {
-    background: var(--color-text-muted);
-    border-color: var(--color-text-muted);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
+.deck-item:hover { background: var(--color-border); }
 
 .deck-item.selected {
     background: var(--color-primary-light);
@@ -68,4 +54,116 @@
     font-size: 0.75rem;
     color: var(--color-text-muted);
     margin-top: 0.25rem;
+}
+
+/* ── Filter bar ─────────────────────────────────────────────────────────── */
+
+.deck-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.deck-filter-btn {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.deck-filter-btn:hover {
+    background: var(--color-secondary-light);
+    color: var(--color-text-primary);
+}
+
+.deck-filter-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 3px;
+    border-radius: 99px;
+    background: var(--color-danger);
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+/* ── Filter panel (popover) ─────────────────────────────────────────────── */
+
+.deck-filter-panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.deck-filter-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+
+.deck-filter-panel-action {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 0.72rem;
+    color: var(--color-primary);
+    padding: 0 0.25rem;
+    font-family: inherit;
+}
+
+.deck-filter-panel-action:hover {
+    text-decoration: underline;
+}
+
+.deck-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.deck-filter-chip {
+    padding: 0.2rem 0.6rem;
+    border: 1px solid var(--color-border);
+    border-radius: 99px;
+    background: transparent;
+    font-size: 0.7rem;
+    font-family: inherit;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    transition: all var(--transition-fast);
+}
+
+.deck-filter-chip:hover {
+    background: var(--color-secondary-light);
+    color: var(--color-text-primary);
+}
+
+.deck-filter-chip.selected {
+    background: var(--color-primary-light);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    font-weight: 600;
 }

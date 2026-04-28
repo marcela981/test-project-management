@@ -363,3 +363,32 @@
 .completed-in-accordion .subtask-selector {
     display: none;
 }
+
+/* ── Priority chip (visible en la tarjeta sin interacción) ────────────── */
+
+.priority-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.5rem;
+    border-radius: 99px;
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.priority-chip.high   { background: var(--color-danger-light, #fee2e2); color: var(--color-danger, #ef4444); }
+.priority-chip.medium { background: var(--color-primary-light); color: var(--color-primary); }
+.priority-chip.low    { background: color-mix(in srgb, var(--color-success, #22c55e) 15%, transparent); color: var(--color-success, #22c55e); }
+
+/* ── CTA "¿Ya finalizaste?" en tab Overview ───────────────────────────── */
+
+.overview-finalize-cta {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+    display: flex;
+    justify-content: center;
+}

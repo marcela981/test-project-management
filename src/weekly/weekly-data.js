@@ -1,5 +1,7 @@
 /** Capa de datos del weekly tracker: llamadas REST a /api/weekly. */
 
+import { startOfDay, getDay, subDays, addDays, format } from 'date-fns';
+import { expandBlocks } from '../calendar/recurrence/rrule-expander.js';
 import { CONFIG } from '../core/config.js';
 import { getToken, logout } from '../auth/auth.js';
 
@@ -73,7 +75,20 @@ export async function fetchBlocks(weekStartIsoDate) {
     _currentWeekStart = weekStartIsoDate;
     try {
         const list = await _apiFetch(`/blocks?week_start=${weekStartIsoDate}`);
-        _cachedBlocks = Array.isArray(list) ? list.map(_normalizeBlock) : [];
+        if (!Array.isArray(list)) { _cachedBlocks = []; return _cachedBlocks; }
+
+        const normalized = list.map(_normalizeBlock);
+
+        // Split master rrule blocks (template only) from concrete/virtual blocks
+        const masters  = normalized.filter(b => b.is_master && b.rrule_string);
+        const concrete = normalized.filter(b => !b.is_master);
+
+        // Expand masters client-side for the displayed week
+        const prefs    = getPreferences();
+        const weekDays = getWeekDays(weekStartIsoDate, prefs);
+        const virtual  = expandBlocks(masters, weekDays[0], weekDays[weekDays.length - 1]);
+
+        _cachedBlocks = [...concrete, ...virtual.map(_normalizeBlock)];
     } catch (e) {
         console.error('[weekly] fetchBlocks:', e);
         _cachedBlocks = [];
@@ -106,11 +121,12 @@ export async function createBlock(block) {
     }
 }
 
-export async function updateBlock(blockId, updates) {
+export async function updateBlock(blockId, updates, scope = null) {
     try {
+        const body = scope ? { ...updates, scope } : updates;
         const saved = await _apiFetch(`/blocks/${blockId}`, {
             method: 'PATCH',
-            body: JSON.stringify(updates),
+            body: JSON.stringify(body),
         });
         if (!saved) return null;
         const norm = _normalizeBlock(saved);
@@ -124,9 +140,10 @@ export async function updateBlock(blockId, updates) {
     }
 }
 
-export async function removeBlock(blockId) {
+export async function removeBlock(blockId, scope = null) {
     try {
-        await _apiFetch(`/blocks/${blockId}`, { method: 'DELETE' });
+        const path = scope ? `/blocks/${blockId}?scope=${scope}` : `/blocks/${blockId}`;
+        await _apiFetch(path, { method: 'DELETE' });
         _cachedBlocks = _cachedBlocks.filter(b => b.id !== blockId);
         return true;
     } catch (e) {
@@ -138,20 +155,30 @@ export async function removeBlock(blockId) {
 
 function _normalizeBlock(b) {
     return {
-        id:            b.id,
-        week_start:    b.week_start,
-        day:           b.day_of_week,
-        block_type:    b.block_type,
-        task_id:       b.task_id ?? null,
-        activity_id:   b.activity_id ?? null,
-        title:         b.title ?? '',
-        color:         b.color ?? null,
-        start_time:    _trimTime(b.start_time),
-        end_time:      _trimTime(b.end_time),
-        notes:         b.notes ?? null,
-        priority:      b.priority ?? null,
-        column_status: b.column_status ?? null,
-        item_type:     b.item_type ?? null,
+        id:               String(b.id),
+        week_start:       b.week_start,
+        day:              b.day_of_week  ?? b.day,
+        block_type:       b.block_type,
+        task_id:          b.task_id          ?? null,
+        activity_id:      b.activity_id      ?? null,
+        title:            b.title            ?? '',
+        color:            b.color            ?? null,
+        start_time:       _trimTime(b.start_time),
+        end_time:         _trimTime(b.end_time),
+        notes:            b.notes            ?? null,
+        priority:         b.priority         ?? null,
+        column_status:    b.column_status    ?? null,
+        item_type:        b.item_type        ?? null,
+        is_virtual:       b.is_virtual       ?? false,
+        is_master:        b.is_master        ?? false,
+        series_id:        b.series_id        ?? null,
+        recurrence:       b.recurrence       ?? null,
+        recurrence_until: b.recurrence_until ?? null,
+        // RRule fields
+        rrule_string:     b.rrule_string     ?? null,
+        dtstart:          b.dtstart          ?? null,
+        exception_dates:  b.exception_dates  ?? [],
+        parent_block_id:  b.parent_block_id  ?? null,
     };
 }
 
@@ -165,29 +192,20 @@ function _trimTime(t) {
 
 export function getWeekDays(referenceDate, prefs) {
     const { week_start_day, week_end_day } = prefs;
-    const date = new Date(referenceDate);
-    date.setHours(0, 0, 0, 0);
-
-    const daysBack = (date.getDay() - week_start_day + 7) % 7;
-    const start = new Date(date);
-    start.setDate(date.getDate() - daysBack);
-
-    const days = [];
-    const cur = new Date(start);
+    const date     = startOfDay(new Date(referenceDate));
+    const daysBack = (getDay(date) - week_start_day + 7) % 7;
+    let cur        = subDays(date, daysBack);
+    const days     = [];
     for (let i = 0; i < 7; i++) {
-        days.push(new Date(cur));
-        if (cur.getDay() === week_end_day) break;
-        cur.setDate(cur.getDate() + 1);
+        days.push(cur);
+        if (getDay(cur) === week_end_day) break;
+        cur = addDays(cur, 1);
     }
     return days;
 }
 
 export function weekStartIso(referenceDate, prefs) {
-    const d = getWeekDays(referenceDate, prefs)[0];
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${dd}`;
+    return format(getWeekDays(referenceDate, prefs)[0], 'yyyy-MM-dd');
 }
 
 export function timeToMinutes(t) {

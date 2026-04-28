@@ -246,7 +246,10 @@ export async function initAuth() {
                 _remove(TOKEN_KEY);
                 return null;
             }
-            throw err;
+            // Ambos tokens fallaron: limpiar sesión y forzar re-login
+            _clearAllAuthKeys();
+            window.location.href = _buildAuthUrl();
+            return null;
         }
     }
 

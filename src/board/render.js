@@ -100,6 +100,10 @@ function _createCompletedAccordion(colKey, tasks) {
     return wrapper;
 }
 
+function _priorityLabel(priority) {
+    return { high: 'Alta', medium: 'Media', low: 'Baja' }[priority] ?? priority;
+}
+
 export function createTaskCard(task) {
     const type          = task.type;
     const isActiveTimer = STATE.timers[type]?.taskId === task.id;
@@ -168,6 +172,7 @@ export function createTaskCard(task) {
             </div>
         </div>
         <div class="task-meta">
+            <span class="priority-chip ${task.priority}">${_priorityLabel(task.priority)}</span>
             ${(task.createdAt || task.startDate) ? (() => {
                 const src = task.createdAt || task.startDate;
                 const timeStr = task.createdAt ? ` · ${formatTimeOfDay(task.createdAt)}` : '';

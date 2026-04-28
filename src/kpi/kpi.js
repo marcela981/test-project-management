@@ -10,7 +10,7 @@ export function updateKPIs() {
     const effectiveness = calculateEffectiveness(STATE.tasks);
 
     const avgProgress = projectTasks.length > 0
-        ? Math.round(projectTasks.reduce((acc, t) => acc + (t.progress ?? 0), 0) / projectTasks.length)
+        ? +( projectTasks.reduce((acc, t) => acc + (t.progress ?? 0), 0) / projectTasks.length).toFixed(2)
         : 0;
 
     document.getElementById('kpiTareasActivas').textContent  = activeTasks.length;

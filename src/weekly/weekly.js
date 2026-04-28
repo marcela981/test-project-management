@@ -7,7 +7,8 @@ import {
     getWeekDays, weekStartIso,
     timeToMinutes, blockDurationH, dayHours,
 } from './weekly-data.js';
-import { openBlockModal } from './weekly-modal.js';
+import { computeBlockLayout } from './weekly-layout.js';
+import { openBlockModal, askScope } from './weekly-modal.js';
 
 const HOUR_START   = 6;
 const HOUR_END     = 23;
@@ -38,6 +39,7 @@ export function renderWeekly(container) {
         container._weeklyInit = true;
         _setupDragDrop();
         _setupResize();
+        _setupDblClick();
         window.addEventListener('preferences-updated', () => _render());
         window.addEventListener('resize', _updateStickyMetrics);
     }
@@ -63,7 +65,7 @@ export function handleWeeklyClick(action, el) {
             return true;
         }
         case 'weekly-edit-block': {
-            const blockId = parseInt(el.dataset.blockId, 10);
+            const blockId = el.dataset.blockId;
             const block   = getBlocks().find(b => b.id === blockId);
             if (block) openBlockModal(
                 { mode: 'edit', day: block.day, weekStartIso: _weekStartIso, block },
@@ -72,8 +74,16 @@ export function handleWeeklyClick(action, el) {
             return true;
         }
         case 'weekly-remove-block': {
-            const blockId = parseInt(el.dataset.blockId, 10);
-            removeBlock(blockId).then(ok => { if (ok) _render(); });
+            const blockId = el.dataset.blockId;
+            const block   = getBlocks().find(b => b.id === blockId);
+            if (block?.series_id || block?.is_virtual) {
+                askScope().then(scope => {
+                    if (scope === null) return;
+                    removeBlock(blockId, scope).then(ok => { if (ok) _render(); });
+                });
+            } else {
+                removeBlock(blockId).then(ok => { if (ok) _render(); });
+            }
             return true;
         }
     }
@@ -256,6 +266,7 @@ function _renderColumn(date, blocks, today) {
     const h          = dayHours(colBlocks, dn);
     const loadPct    = Math.min(100, Math.round((h / 8) * 100));
     const overloaded = h > 10 ? 'overloaded' : '';
+    const layout     = computeBlockLayout(colBlocks);
 
     const totalSlots = HOUR_END - HOUR_START + 1;
     const hourLines  = Array.from({ length: totalSlots }, (_, i) =>
@@ -280,7 +291,7 @@ function _renderColumn(date, blocks, today) {
                      style="top:${availTop}px;height:${availHeight}px"></div>
                 ${hourLines}
                 ${!hasBlocks ? '<div class="weekly-no-blocks-text"><i class="fas fa-calendar-plus"></i><br>Sin bloques planeados</div>' : ''}
-                ${colBlocks.map(_renderBlock).join('')}
+                ${colBlocks.map(b => _renderBlock(b, layout.get(b.id))).join('')}
             </div>
             <div class="weekly-col-footer">
                 <button class="weekly-add-btn"
@@ -293,7 +304,8 @@ function _renderColumn(date, blocks, today) {
 
 // ── Block ────────────────────────────────────────────────────────────────────
 
-function _renderBlock(block) {
+function _renderBlock(block, blockLayout = { column: 0, totalColumns: 1 }) {
+    const { column, totalColumns } = blockLayout;
     const top        = timeToMinutes(block.start_time) - HOUR_START * 60;
     const height     = Math.max(24, timeToMinutes(block.end_time) - timeToMinutes(block.start_time));
     const durH       = blockDurationH(block);
@@ -316,7 +328,15 @@ function _renderBlock(block) {
         }
     }
 
-    const styleBase = `top:${top}px;height:${height}px`;
+    const recurIcon = (block.recurrence === 'weekly' || block.series_id)
+        ? '<i class="fas fa-repeat" style="font-size:.5625rem;margin-right:2px;opacity:.7"></i>'
+        : '';
+
+    const posStyle = totalColumns === 1
+        ? 'left:4px;right:4px;'
+        : `left:calc(${(column / totalColumns * 100).toFixed(2)}% + 2px);width:calc(${(100 / totalColumns).toFixed(2)}% - 4px);right:auto;`;
+
+    const styleBase = `top:${top}px;height:${height}px;${posStyle}`;
 
     return `
         <div class="weekly-block ${blockClass}"
@@ -325,7 +345,7 @@ function _renderBlock(block) {
              data-action="weekly-edit-block"
              data-block-id="${block.id}">
             <div class="weekly-block-resize weekly-block-resize-top"></div>
-            <div class="weekly-block-title">${typeIcon}${_esc(title)}</div>
+            <div class="weekly-block-title">${typeIcon}${recurIcon}${_esc(title)}</div>
             ${height >= 40
                 ? `<div class="weekly-block-time">${block.start_time}–${block.end_time} · ${durH}h</div>`
                 : ''}
@@ -348,8 +368,16 @@ function _setupDragDrop() {
         const rm = e.target.closest('.weekly-block-remove');
         if (!rm) return;
         e.stopPropagation();
-        const blockId = parseInt(rm.dataset.blockId, 10);
-        removeBlock(blockId).then(ok => { if (ok) _render(); });
+        const blockId = rm.dataset.blockId;
+        const block   = getBlocks().find(b => b.id === blockId);
+        if (block?.series_id || block?.is_virtual) {
+            askScope().then(scope => {
+                if (scope === null) return;
+                removeBlock(blockId, scope).then(ok => { if (ok) _render(); });
+            });
+        } else {
+            removeBlock(blockId).then(ok => { if (ok) _render(); });
+        }
     });
 
     _container.addEventListener('dragstart', e => {
@@ -357,7 +385,7 @@ function _setupDragDrop() {
         const urgentEl = e.target.closest('[data-urgent-task-id]');
 
         if (blockEl) {
-            _dragBlockId = parseInt(blockEl.dataset.blockId, 10);
+            _dragBlockId = blockEl.dataset.blockId;
             _dragTaskId  = null;
             blockEl.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
@@ -473,7 +501,7 @@ function _setupResize() {
         const blockEl = handle.closest('.weekly-block');
         if (!blockEl) return;
 
-        const blockId = parseInt(blockEl.dataset.blockId, 10);
+        const blockId = blockEl.dataset.blockId;
         const block   = getBlocks().find(b => b.id === blockId);
         if (!block) return;
 
@@ -550,6 +578,37 @@ function _setupResize() {
         blockEl.draggable = true;
         blockEl.style.top    = (origStartMin - HOUR_START * 60) / 60 * PX_PER_HOUR + 'px';
         blockEl.style.height = (origEndMin   - origStartMin)    / 60 * PX_PER_HOUR + 'px';
+    });
+}
+
+// ── Double-click to create ────────────────────────────────────────────────────
+
+function _setupDblClick() {
+    if (!_container) return;
+    _container.addEventListener('dblclick', e => {
+        // Let existing-block double-clicks fall through (single-click already edits)
+        if (e.target.closest('.weekly-block')) return;
+
+        const col = e.target.closest('.weekly-col-body');
+        if (!col) return;
+
+        const day      = parseInt(col.dataset.day, 10);
+        const rect     = col.getBoundingClientRect();
+        const snapMins = _snapToGrid(e.clientY - rect.top);
+
+        const startMins = Math.min(
+            HOUR_START * 60 + snapMins,
+            HOUR_END   * 60 - 1,
+        );
+        const endMins = Math.min(startMins + 60, HOUR_END * 60 + 59);
+
+        openBlockModal({
+            mode:         'create',
+            day,
+            weekStartIso: _weekStartIso,
+            startTime:    _minsToTime(startMins),
+            endTime:      _minsToTime(endMins),
+        }, () => _render());
     });
 }
 

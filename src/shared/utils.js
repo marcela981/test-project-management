@@ -60,7 +60,7 @@ export function calculateEffectiveness(tasks) {
         sumEi += ei;
     }
 
-    return Math.round((sumEi / N) * 100); // 0–150
+    return +((sumEi / N) * 100).toFixed(2); // 0–150, max 2 decimales
 }
 
 export function generateId(prefix = 'item') {
