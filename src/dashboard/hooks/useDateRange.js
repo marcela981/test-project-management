@@ -4,7 +4,7 @@ function computeRange(period, customStart, customEnd) {
     if (period === 'custom') return { start: customStart, end: customEnd };
     const end   = new Date();
     const start = new Date();
-    const days  = { week: 7, month: 30, quarter: 90, year: 365 };
+    const days  = { week: 7, month: 30, quarter: 90 };
     start.setDate(end.getDate() - (days[period] ?? 30));
     return {
         start: start.toISOString().split('T')[0],

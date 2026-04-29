@@ -201,7 +201,7 @@ async function handleClick(e) {
                 if (!handleWeeklyModalEvent(action, el)) handleCalendarClick(action, el);
             } else if (action?.startsWith('calendar-') || action?.startsWith('day-') ||
                        action?.startsWith('month-') || action?.startsWith('quarter-') ||
-                       action?.startsWith('semester-') || action?.startsWith('annual-')) {
+                       action?.startsWith('semester-')) {
                 handleCalendarClick(action, el);
             }
             break;

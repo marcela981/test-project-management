@@ -4,11 +4,11 @@
  */
 
 import {
-    addDays, subDays, addMonths, subMonths, addYears, subYears,
+    addDays, subDays, addMonths, subMonths,
 } from 'date-fns';
 import { getPreferences, savePreferences } from '../weekly/weekly-data.js';
 
-export const VIEWS = ['day', 'week', 'month', 'quarter', 'semester', 'annual'];
+export const VIEWS = ['day', 'week', 'month', 'quarter', 'semester'];
 
 const VIEW_STEPS = {
     day:      { add: (d, n) => addDays(d, n),    sub: (d, n) => subDays(d, n) },
@@ -16,7 +16,6 @@ const VIEW_STEPS = {
     month:    { add: (d, n) => addMonths(d, n),  sub: (d, n) => subMonths(d, n) },
     quarter:  { add: (d, n) => addMonths(d, n * 3), sub: (d, n) => subMonths(d, n * 3) },
     semester: { add: (d, n) => addMonths(d, n * 6), sub: (d, n) => subMonths(d, n * 6) },
-    annual:   { add: (d, n) => addYears(d, n),   sub: (d, n) => subYears(d, n) },
 };
 
 let _view = localStorage.getItem('cal_view') ?? 'week';

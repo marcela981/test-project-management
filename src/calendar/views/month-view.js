@@ -3,17 +3,20 @@
 import { format, isToday, isSameMonth, startOfMonth, endOfMonth } from 'date-fns';
 import { getMonthGrid } from '../shared/month-grid.js';
 import { fetchAggregate, buildAggMap } from '../data/aggregate-api.js';
+import { renderPeriodNav } from '../shared/period-nav.js';
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAY_HDRS    = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 
-let _container = null;
-let _date      = new Date();
+let _container   = null;
+let _date        = new Date();
+let _toolbarHtml = '';
 
 // ---------------------------------------------------------------------------
 
-export function renderMonthView(container, refDate) {
-    _container = container;
+export function renderMonthView(container, refDate, toolbarHtml = '') {
+    _container   = container;
+    _toolbarHtml = toolbarHtml;
     if (refDate) _date = new Date(refDate);
     _renderSkeleton();
     _loadAndRender();
@@ -80,10 +83,8 @@ function _renderFull(y, m, aggMap) {
 }
 
 function _nav(y, m) {
-    return `<div class="cal-nav-bar">
-        <button class="cal-nav-btn" data-action="month-prev"><i class="fas fa-chevron-left"></i></button>
-        <span class="cal-nav-title">${MONTH_NAMES[m]} ${y}</span>
-        <button class="cal-nav-btn" data-action="month-today">Hoy</button>
-        <button class="cal-nav-btn" data-action="month-next"><i class="fas fa-chevron-right"></i></button>
-    </div>`;
+    const viewsHtml = _toolbarHtml
+        ? `<div class="cal-period-nav-views" role="toolbar" aria-label="Vista del calendario">${_toolbarHtml}</div>`
+        : '';
+    return renderPeriodNav({ label: `${MONTH_NAMES[m]} ${y}`, actionPrefix: 'month', extraContent: viewsHtml });
 }

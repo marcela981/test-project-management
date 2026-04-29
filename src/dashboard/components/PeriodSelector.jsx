@@ -2,7 +2,6 @@ const PERIODS = [
     ['week', 'Semana'],
     ['month', 'Mes'],
     ['quarter', 'Trimestre'],
-    ['year', 'Año'],
     ['custom', 'Fechas'],
 ];
 

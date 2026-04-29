@@ -11,9 +11,7 @@ import { renderDayView, navigateDayNext, navigateDayPrev, navigateDayToday }    
 import { renderMonthView, navigateMonthNext, navigateMonthPrev, navigateMonthToday }     from './views/month-view.js';
 import { renderQuarterView, navigateQuarterNext, navigateQuarterPrev, navigateQuarterToday } from './views/quarter-view.js';
 import { renderSemesterView, navigateSemesterNext, navigateSemesterPrev, navigateSemesterToday } from './views/semester-view.js';
-import { renderAnnualView, navigateAnnualNext, navigateAnnualPrev, navigateAnnualToday } from './views/annual-view.js';
-
-const VIEW_LABELS = { day: 'Día', week: 'Semana', month: 'Mes', quarter: 'Trimestre', semester: 'Semestre', annual: 'Anual' };
+const VIEW_LABELS = { day: 'Día', week: 'Semana', month: 'Mes', quarter: 'Trimestre', semester: 'Semestre' };
 
 let _container = null;
 
@@ -58,20 +56,11 @@ function _renderContainer() {
     const view    = getView();
     const refDate = getCalendarDate();
 
-    if (view === 'week') {
-        _container.innerHTML = `
-            <div class="calendar-shell">
-                <div class="calendar-view-host" id="calViewHost"></div>
-            </div>`;
-        renderWeekView(_container.querySelector('#calViewHost'), _viewTabsHtml(view));
-    } else {
-        _container.innerHTML = `
-            <div class="calendar-shell">
-                ${_toolbar(view)}
-                <div class="calendar-view-host" id="calViewHost"></div>
-            </div>`;
-        _renderView(view, _container.querySelector('#calViewHost'), refDate);
-    }
+    _container.innerHTML = `
+        <div class="calendar-shell">
+            <div class="calendar-view-host" id="calViewHost"></div>
+        </div>`;
+    _renderView(view, _container.querySelector('#calViewHost'), refDate, _viewTabsHtml(view));
 }
 
 function _viewTabsHtml(activeView) {
@@ -80,19 +69,14 @@ function _viewTabsHtml(activeView) {
     ).join('');
 }
 
-function _toolbar(activeView) {
-    return `<div class="cal-view-toolbar" role="toolbar" aria-label="Vista del calendario">${_viewTabsHtml(activeView)}</div>`;
-}
-
-function _renderView(view, host, refDate) {
+function _renderView(view, host, refDate, toolbarHtml = '') {
     switch (view) {
-        case 'day':      renderDayView(host, refDate);      break;
-        case 'week':     renderWeekView(host);              break;
-        case 'month':    renderMonthView(host, refDate);    break;
-        case 'quarter':  renderQuarterView(host, refDate);  break;
-        case 'semester': renderSemesterView(host, refDate); break;
-        case 'annual':   renderAnnualView(host, refDate);   break;
-        default:         renderWeekView(host);
+        case 'day':      renderDayView(host, refDate, toolbarHtml);      break;
+        case 'week':     renderWeekView(host, toolbarHtml);              break;
+        case 'month':    renderMonthView(host, refDate, toolbarHtml);    break;
+        case 'quarter':  renderQuarterView(host, refDate, toolbarHtml);  break;
+        case 'semester': renderSemesterView(host, refDate, toolbarHtml); break;
+        default:         renderWeekView(host, toolbarHtml);
     }
 }
 
@@ -119,11 +103,6 @@ function _handleNav(action) {
         case 'semester-prev':  navigateSemesterPrev();  return true;
         case 'semester-next':  navigateSemesterNext();  return true;
         case 'semester-today': navigateSemesterToday(); return true;
-
-        // Annual
-        case 'annual-prev':  navigateAnnualPrev();  return true;
-        case 'annual-next':  navigateAnnualNext();  return true;
-        case 'annual-today': navigateAnnualToday(); return true;
 
         // Generic weekly prev/next/today delegate to the shared state
         case 'weekly-prev':  navigatePrev(); _renderContainer(); return true;

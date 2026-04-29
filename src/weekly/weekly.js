@@ -9,6 +9,7 @@ import {
 } from './weekly-data.js';
 import { computeBlockLayout } from './weekly-layout.js';
 import { openBlockModal, askScope } from './weekly-modal.js';
+import { renderPeriodNav } from '../calendar/shared/period-nav.js';
 
 const HOUR_START   = 6;
 const HOUR_END     = 23;
@@ -235,23 +236,10 @@ function _renderNav(days) {
         : `${fmt(f)} ${f.getFullYear()} – ${fmt(l)} ${l.getFullYear()}`;
 
     const viewsHtml = _toolbarHtml
-        ? `<div class="weekly-nav-views" role="toolbar" aria-label="Vista del calendario">${_toolbarHtml}</div>`
+        ? `<div class="cal-period-nav-views" role="toolbar" aria-label="Vista del calendario">${_toolbarHtml}</div>`
         : '';
 
-    return `
-        <nav class="weekly-nav" aria-label="Navegación semanal">
-            <div class="weekly-nav-date-group">
-                <button class="weekly-nav-btn" data-action="weekly-prev" aria-label="Semana anterior" title="Semana anterior">
-                    <i class="fas fa-chevron-left" aria-hidden="true"></i>
-                </button>
-                <span class="weekly-nav-range" aria-live="polite">${range}</span>
-                <button class="weekly-nav-btn" data-action="weekly-next" aria-label="Semana siguiente" title="Semana siguiente">
-                    <i class="fas fa-chevron-right" aria-hidden="true"></i>
-                </button>
-                <button class="weekly-nav-btn weekly-nav-today" data-action="weekly-today">Hoy</button>
-            </div>
-            ${viewsHtml}
-        </nav>`;
+    return renderPeriodNav({ label: range, actionPrefix: 'weekly', extraContent: viewsHtml });
 }
 
 // ── Time axis ────────────────────────────────────────────────────────────────

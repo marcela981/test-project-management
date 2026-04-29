@@ -3,14 +3,17 @@
 import { startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import { fetchAggregate, buildAggMap } from '../data/aggregate-api.js';
 import { renderMiniMonth, renderMiniMonthSkeleton } from '../shared/mini-calendar.js';
+import { renderPeriodNav } from '../shared/period-nav.js';
 
-let _container = null;
-let _date      = new Date();
+let _container   = null;
+let _date        = new Date();
+let _toolbarHtml = '';
 
 // ---------------------------------------------------------------------------
 
-export function renderQuarterView(container, refDate) {
-    _container = container;
+export function renderQuarterView(container, refDate, toolbarHtml = '') {
+    _container   = container;
+    _toolbarHtml = toolbarHtml;
     if (refDate) _date = new Date(refDate);
     _renderSkeleton();
     _loadAndRender();
@@ -61,10 +64,8 @@ async function _loadAndRender() {
 
 function _nav(qs) {
     const q = Math.floor(qs.getMonth() / 3) + 1;
-    return `<div class="cal-nav-bar">
-        <button class="cal-nav-btn" data-action="quarter-prev"><i class="fas fa-chevron-left"></i></button>
-        <span class="cal-nav-title">Q${q} ${qs.getFullYear()}</span>
-        <button class="cal-nav-btn" data-action="quarter-today">Hoy</button>
-        <button class="cal-nav-btn" data-action="quarter-next"><i class="fas fa-chevron-right"></i></button>
-    </div>`;
+    const viewsHtml = _toolbarHtml
+        ? `<div class="cal-period-nav-views" role="toolbar" aria-label="Vista del calendario">${_toolbarHtml}</div>`
+        : '';
+    return renderPeriodNav({ label: `Q${q} ${qs.getFullYear()}`, actionPrefix: 'quarter', extraContent: viewsHtml });
 }

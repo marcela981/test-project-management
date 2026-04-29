@@ -1,5 +1,5 @@
 /**
- * Shared mini-calendar renderer for quarter / semester / annual views.
+ * Shared mini-calendar renderer for quarter / semester views.
  * Stateless: takes year, month, aggMap and returns an HTML string.
  */
 

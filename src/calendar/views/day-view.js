@@ -2,6 +2,7 @@
 
 import { format, isToday } from 'date-fns';
 import { fetchPreferences, getPreferences, fetchBlocks, getBlocks, timeToMinutes } from '../../weekly/weekly-data.js';
+import { renderPeriodNav } from '../shared/period-nav.js';
 import { computeBlockLayout } from '../../weekly/weekly-layout.js';
 import { openBlockModal } from '../../weekly/weekly-modal.js';
 
@@ -13,13 +14,15 @@ const SNAP_MINUTES = 15;
 const MONTH_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const DAY_NAMES   = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 
-let _container = null;
-let _date      = new Date();
+let _container   = null;
+let _date        = new Date();
+let _toolbarHtml = '';
 
 // ---------------------------------------------------------------------------
 
-export function renderDayView(container, refDate) {
-    _container = container;
+export function renderDayView(container, refDate, toolbarHtml = '') {
+    _container   = container;
+    _toolbarHtml = toolbarHtml;
     if (refDate) _date = new Date(refDate);
     _render();
 
@@ -53,12 +56,7 @@ async function _render() {
 
     _container.innerHTML = `
         <div class="day-view">
-            <div class="day-view-nav">
-                <button class="cal-nav-btn" data-action="day-prev"><i class="fas fa-chevron-left"></i></button>
-                <span class="day-view-title${todayFlag ? ' today' : ''}">${label}</span>
-                <button class="cal-nav-btn" data-action="day-today">Hoy</button>
-                <button class="cal-nav-btn" data-action="day-next"><i class="fas fa-chevron-right"></i></button>
-            </div>
+            ${renderPeriodNav({ label, actionPrefix: 'day', extraContent: _toolbarHtml ? `<div class="cal-period-nav-views" role="toolbar" aria-label="Vista del calendario">${_toolbarHtml}</div>` : '' })}
             <div class="day-view-scroll">
                 <div class="day-time-axis">
                     ${_timeAxis()}

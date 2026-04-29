@@ -3,14 +3,17 @@
 import { startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import { fetchAggregate, buildAggMap } from '../data/aggregate-api.js';
 import { renderMiniMonth, renderMiniMonthSkeleton } from '../shared/mini-calendar.js';
+import { renderPeriodNav } from '../shared/period-nav.js';
 
-let _container = null;
-let _date      = new Date();
+let _container   = null;
+let _date        = new Date();
+let _toolbarHtml = '';
 
 // ---------------------------------------------------------------------------
 
-export function renderSemesterView(container, refDate) {
-    _container = container;
+export function renderSemesterView(container, refDate, toolbarHtml = '') {
+    _container   = container;
+    _toolbarHtml = toolbarHtml;
     if (refDate) _date = new Date(refDate);
     _renderSkeleton();
     _loadAndRender();
@@ -61,10 +64,8 @@ async function _loadAndRender() {
 
 function _nav(ss) {
     const sem = ss.getMonth() === 0 ? 1 : 2;
-    return `<div class="cal-nav-bar">
-        <button class="cal-nav-btn" data-action="semester-prev"><i class="fas fa-chevron-left"></i></button>
-        <span class="cal-nav-title">S${sem} ${ss.getFullYear()}</span>
-        <button class="cal-nav-btn" data-action="semester-today">Hoy</button>
-        <button class="cal-nav-btn" data-action="semester-next"><i class="fas fa-chevron-right"></i></button>
-    </div>`;
+    const viewsHtml = _toolbarHtml
+        ? `<div class="cal-period-nav-views" role="toolbar" aria-label="Vista del calendario">${_toolbarHtml}</div>`
+        : '';
+    return renderPeriodNav({ label: `S${sem} ${ss.getFullYear()}`, actionPrefix: 'semester', extraContent: viewsHtml });
 }
