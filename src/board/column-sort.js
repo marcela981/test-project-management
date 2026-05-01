@@ -21,8 +21,17 @@ export function compareByDeadline(a, b) {
 }
 
 export function compareByCompletedAt(a, b) {
-    return new Date(a.completedAt || 0).getTime()
-         - new Date(b.completedAt || 0).getTime();
+    const resolve = item =>
+        item.completedAt ? new Date(item.completedAt).getTime()
+        : item.updatedAt  ? new Date(item.updatedAt).getTime()
+        : item.createdAt  ? new Date(item.createdAt).getTime()
+        : null;
+    const ta = resolve(a);
+    const tb = resolve(b);
+    if (ta === null && tb === null) return 0;
+    if (ta === null) return 1;
+    if (tb === null) return -1;
+    return ta - tb;
 }
 
 // ── Configuración ─────────────────────────────────────────────────────────────
@@ -96,6 +105,20 @@ export function sortItems(items, columnKey) {
             if (da === null) return 1;
             if (db === null) return -1;
             return dir * (da - db);
+        }
+        // completed_at null siempre al final, independientemente de la dirección
+        if (sort.criterion === 'completed_at') {
+            const resolve = item =>
+                item.completedAt ? new Date(item.completedAt).getTime()
+                : item.updatedAt  ? new Date(item.updatedAt).getTime()
+                : item.createdAt  ? new Date(item.createdAt).getTime()
+                : null;
+            const ta = resolve(a);
+            const tb = resolve(b);
+            if (ta === null && tb === null) return 0;
+            if (ta === null) return 1;
+            if (tb === null) return -1;
+            return dir * (ta - tb);
         }
         return dir * cmp(a, b);
     });
