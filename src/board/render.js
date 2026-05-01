@@ -7,8 +7,6 @@ import {
     sortItems, getSort, setSort, resetSort, isDefaultSort,
     CRITERIA_ACTIVE, CRITERIA_COMPLETED,
 } from './column-sort.js';
-import { mountBoardColumns } from './boardMount.tsx';
-import { queryClient } from './queryClient.ts';
 
 // Columnas que separan tareas completadas en acordeón
 const ACCORDION_COLUMNS = ['actively-working', 'activities'];
@@ -157,35 +155,82 @@ function _syncSortButtonStates() {
 // ── Board render ──────────────────────────────────────────────────────────────
 
 export function renderBoard() {
-    // Mount React roots on first call (no-op on subsequent calls).
-    mountBoardColumns();
+    const columns = {
+        'actively-working': document.getElementById('columnActivelyWorking'),
+        'working-now':      document.getElementById('columnWorkingNow'),
+        'activities':       document.getElementById('columnActivities')
+    };
 
-    // Sync DOM counter badges and KPIs immediately from STATE (no flash).
-    _syncColumnCounts();
-    _syncSortButtonStates();
-    updateKPIs();
+    Object.values(columns).forEach(col => (col.innerHTML = ''));
 
-    // Signal React columns to refetch their queries.
-    queryClient.invalidateQueries({ queryKey: ['board'], refetchType: 'active' });
-}
+    // Clasificar tareas por columna y estado
+    const activeTasks    = { 'actively-working': [], 'working-now': [], 'activities': [] };
+    const completedTasks = { 'actively-working': [], 'activities': [] };
 
-function _syncColumnCounts() {
-    const counts = { 'actively-working': 0, 'working-now': 0, 'activities': 0 };
     STATE.tasks.forEach(task => {
-        const col = counts.hasOwnProperty(task.column) ? task.column : 'actively-working';
-        if (!ACCORDION_COLUMNS.includes(col) || !_isCompletedTask(task)) {
-            counts[col] = (counts[col] || 0) + 1;
+        const col = activeTasks.hasOwnProperty(task.column) ? task.column : 'actively-working';
+        if (ACCORDION_COLUMNS.includes(col) && _isCompletedTask(task)) {
+            completedTasks[col].push(task);
+        } else {
+            activeTasks[col].push(task);
         }
     });
+
+    // Aplicar sort a cada sección
+    const sorted = {
+        'actively-working': sortItems(activeTasks['actively-working'], 'actively-working'),
+        'working-now':      activeTasks['working-now'],
+        'activities':       sortItems(activeTasks['activities'], 'activities'),
+    };
+    const sortedCompleted = {
+        'actively-working': sortItems(completedTasks['actively-working'], 'actively-working-completed'),
+        'activities':       sortItems(completedTasks['activities'], 'activities-completed'),
+    };
+
+    // Renderizar tareas activas
+    const counts = { 'actively-working': 0, 'working-now': 0, 'activities': 0 };
+    Object.entries(sorted).forEach(([colKey, tasks]) => {
+        const col = columns[colKey];
+        if (!col) return;
+        tasks.forEach(task => {
+            col.appendChild(createTaskCard(task));
+            counts[colKey]++;
+        });
+    });
+
+    // Acordeones al final de cada columna que los admite
+    ACCORDION_COLUMNS.forEach(colKey => {
+        const col   = columns[colKey];
+        const tasks = sortedCompleted[colKey];
+        if (tasks.length > 0) {
+            col.appendChild(_createCompletedAccordion(colKey, tasks));
+        }
+    });
+
     document.getElementById('countActivelyWorking').textContent = counts['actively-working'];
     document.getElementById('countWorkingNow').textContent      = counts['working-now'];
     document.getElementById('countActivities').textContent      = counts['activities'];
+
+    Object.entries(columns).forEach(([key, col]) => {
+        const total = counts[key] + (completedTasks[key]?.length ?? 0);
+        if (total === 0) {
+            col.innerHTML = `
+                <div class="column-empty">
+                    <i class="fas fa-inbox"></i>
+                    <p>Drag tasks here</p>
+                </div>`;
+        }
+    });
+
+    _syncSortButtonStates();
+    updateKPIs();
 }
 
-// React now owns the accordion state via BoardColumn.
-// This export is kept to avoid breaking the data-action="toggle-completed-accordion"
-// path in app.js event delegation; React handles the actual toggle via onClick.
-export function toggleCompletedAccordion(_colKey) { /* no-op */ }
+export function toggleCompletedAccordion(colKey) {
+    _accordionOpen[colKey] = !_accordionOpen[colKey];
+    const el = document.querySelector(`.completed-accordion[data-col-key="${colKey}"]`);
+    if (el) el.classList.toggle('open', _accordionOpen[colKey]);
+}
 
 function _createCompletedAccordion(colKey, tasks) {
     const isOpen       = _accordionOpen[colKey];

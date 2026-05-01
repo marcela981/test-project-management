@@ -16,9 +16,6 @@
 @import './components/dashboard.css';
 @import './components/retroactive.css';
 
-/* Board React components */
-@import './components/board-react.css';
-
 /* Features */
 @import '../settings/settings.css';
 @import '../weekly/weekly.css';
