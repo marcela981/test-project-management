@@ -60,17 +60,23 @@ function _isActivity(taskId) {
     return STATE.tasks.find(t => t.id === taskId)?.type === 'activity';
 }
 
+function _unwrap(res) {
+    if (res && Array.isArray(res.items)) return res.items;
+    if (Array.isArray(res)) return res;
+    return [];
+}
+
 export async function fetchTasks() {
     if (!CONFIG.BACKEND_URL) return [];
 
     const [tareas, activities] = await Promise.all([
-        apiFetch('/tareas').catch(() => []),
-        apiFetch('/activities').catch(() => []),
+        apiFetch('/tareas?status=active&limit=500').catch(() => []),
+        apiFetch('/activities?status=active&limit=500').catch(() => []),
     ]);
 
     return [
-        ...(Array.isArray(tareas)      ? tareas      : []),
-        ...(Array.isArray(activities)  ? activities  : []),
+        ..._unwrap(tareas),
+        ..._unwrap(activities),
     ];
 }
 
