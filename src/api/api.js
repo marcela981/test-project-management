@@ -70,12 +70,9 @@ export async function fetchTasks() {
     if (!CONFIG.BACKEND_URL) return [];
 
     const [tareas, activities] = await Promise.all([
-        apiFetch('/tareas?status=active').catch(() => []),
-        apiFetch('/activities?status=active').catch(() => []),
+        apiFetch('/tareas?status=active&limit=500').catch(() => []),
+        apiFetch('/activities?status=active&limit=500').catch(() => []),
     ]);
-
-    if (tareas?.has_more)     console.warn('[fetchTasks] tareas: has_more=true, ACTIVE_CAP alcanzado');
-    if (activities?.has_more) console.warn('[fetchTasks] activities: has_more=true, ACTIVE_CAP alcanzado');
 
     return [
         ..._unwrap(tareas),
