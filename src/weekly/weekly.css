@@ -763,17 +763,75 @@
     );
 }
 
-/* `.weekly-blocks-track` is a positioning context for the user's blocks.
-   Without events it fills the column body; with events it leaves a 32px
-   strip on the left for the event track. The blocks themselves keep their
-   percentage-based left/width math unchanged. */
+/* Block tracks — planned (izquierda) and log (derecha) are independent
+   absolute tracks so their layout engines never steal columns from each
+   other. --full expands a track to full width when the other type has no
+   blocks for that day. */
 .weekly-blocks-track {
     position: absolute;
-    inset: 0;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+}
+.weekly-blocks-track--planned:not(.weekly-blocks-track--full) { right: 50%; }
+.weekly-blocks-track--log:not(.weekly-blocks-track--full)     { left:  50%; }
+
+.weekly-col-body.has-events .weekly-blocks-track--planned                             { left: 32px; }
+.weekly-col-body.has-events .weekly-blocks-track--log:not(.weekly-blocks-track--full) { left: max(32px, 50%); }
+.weekly-col-body.has-events .weekly-blocks-track--full                                { left: 32px; }
+
+/* ── Block badges ("Planeado", "Ejecutado", "Cumplido") ─────────────────── */
+
+.weekly-block-badge {
+    display: inline-block;
+    font-size: 0.5rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 1px 4px;
+    border-radius: 2px;
+    line-height: 1.2;
+    align-self: flex-start;
+    flex-shrink: 0;
+    margin-bottom: 1px;
+    pointer-events: none;
+}
+.weekly-block-badge--planned  { background: var(--color-warning); color: white; }
+.weekly-block-badge--log      { background: var(--color-primary); color: white; }
+.weekly-block-badge--fulfilled { background: var(--color-success); color: white; }
+
+/* ── Planned track: dashed border + reduced opacity = "intención" ────────── */
+
+.weekly-blocks-track--planned .weekly-block.task-block {
+    border-style: dashed;
+    border-width: 2px;
+    border-left-style: solid;
+    border-left-width: 3px;
+    opacity: 0.75;
+}
+.weekly-blocks-track--planned .weekly-block.task-block:hover { opacity: 1; }
+
+/* ── Log track: solid border, fully opaque = "ejecución" ─────────────────── */
+
+.weekly-blocks-track--log .weekly-block--log {
+    border-style: solid;
+    border-width: 1px;
+    border-left-width: 3px;
+    opacity: 1;
 }
 
-.weekly-col-body.has-events .weekly-blocks-track {
-    left: 32px;
+/* ── Perfect match ("Cumplido"): log gets success accent ─────────────────── */
+
+.weekly-block--fulfilled {
+    border-color: var(--color-success) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-success) 25%, transparent);
+}
+
+/* Planned counterpart of a fulfilled block: visually subordinated */
+.weekly-block--fulfilled-shadow {
+    opacity: 0.45;
+    z-index: 1;
 }
 
 /* ── Calendar event detail modal ─────────────────────────────────────────── */

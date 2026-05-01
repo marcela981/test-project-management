@@ -216,6 +216,16 @@ async function _render() {
 
     const blocks = getBlocks();
     const today  = _today();
+
+    // Derive effective grid start from the earliest block across the whole week
+    {
+        const minStart = blocks.reduce((m, b) => {
+            const s = timeToMinutes(b.start_time);
+            return s < m ? s : m;
+        }, HOUR_START * 60);
+        _gridHourStart = Math.floor(minStart / 60);
+    }
+
     const bizHours = getBusinessHoursForDate(bizConfig, _weekStartIso);
 
     // Calendar events: kick off the fetch before painting and use whatever
@@ -511,7 +521,7 @@ function _renderNav(days) {
 
 function _renderTimeAxis() {
     const labels = [];
-    for (let h = HOUR_START; h <= HOUR_END; h++) {
+    for (let h = _gridHourStart; h <= HOUR_END; h++) {
         const label = h === 0 ? '12am' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h - 12}pm`;
         labels.push(`<div class="weekly-hour-label">${label}</div>`);
     }
@@ -528,9 +538,31 @@ function _renderColumn(date, blocks, today, bizHours, events = []) {
     const h          = dayHours(colBlocks, dn);
     const loadPct    = Math.min(100, Math.round((h / 8) * 100));
     const overloaded = h > 10 ? 'overloaded' : '';
-    const layout     = computeBlockLayout(colBlocks);
 
-    const totalSlots = HOUR_END - HOUR_START + 1;
+    // Split by type and compute layouts independently so planned and log
+    // blocks never steal columns from each other.
+    const plannedBlocks = colBlocks.filter(b => !b.is_log);
+    const logBlocks     = colBlocks.filter(b =>  b.is_log);
+    const plannedLayout = computeBlockLayout(plannedBlocks);
+    const logLayout     = computeBlockLayout(logBlocks);
+
+    // Detect perfect matches (same title + exact time range → "Cumplido")
+    const matchedLogIds     = new Set();
+    const matchedPlannedIds = new Set();
+    for (const log of logBlocks) {
+        const match = plannedBlocks.find(p =>
+            p.start_time === log.start_time &&
+            p.end_time   === log.end_time   &&
+            p.title      === log.title
+        );
+        if (match) {
+            matchedLogIds.add(log.id);
+            matchedPlannedIds.add(match.id);
+        }
+    }
+
+    const totalSlots = HOUR_END - _gridHourStart + 1;
+    const gridHeight = totalSlots * PX_PER_HOUR;
     const hourLines  = Array.from({ length: totalSlots }, (_, i) =>
         `<div class="weekly-hour-line" style="top:${i * PX_PER_HOUR}px"></div>`
     ).join('');
@@ -539,22 +571,24 @@ function _renderColumn(date, blocks, today, bizHours, events = []) {
     let availZoneHtml = '';
     if (bizHours) {
         const { localStartHour, localEndHour } = bizHours;
-        const startH = Math.max(HOUR_START, Math.min(HOUR_END, localStartHour));
+        const startH = Math.max(_gridHourStart, Math.min(HOUR_END, localStartHour));
         const endH   = localEndHour < localStartHour
             ? HOUR_END
-            : Math.max(HOUR_START, Math.min(HOUR_END, localEndHour));
+            : Math.max(_gridHourStart, Math.min(HOUR_END, localEndHour));
         if (endH > startH) {
-            const availTop    = (startH - HOUR_START) * PX_PER_HOUR;
-            const availHeight = (endH   - startH)     * PX_PER_HOUR;
+            const availTop    = (startH - _gridHourStart) * PX_PER_HOUR;
+            const availHeight = (endH   - startH)         * PX_PER_HOUR;
             availZoneHtml = `<div class="weekly-availability-zone"
                  style="top:${availTop}px;height:${availHeight}px"></div>`;
         }
     }
 
-    // Calendar events render in their own track on the left edge of the
-    // column body — visually distinct (dotted, faded) and read-only.
     const eventTrackHtml = renderEventTrack(events, date);
     const hasEventsClass = events.length > 0 ? ' has-events' : '';
+
+    // When only one track type has blocks it expands to full column width.
+    const plannedFull = logBlocks.length     === 0 ? ' weekly-blocks-track--full' : '';
+    const logFull     = plannedBlocks.length === 0 ? ' weekly-blocks-track--full' : '';
 
     return `
         <div class="weekly-col" data-day="${dn}">
@@ -566,13 +600,18 @@ function _renderColumn(date, blocks, today, bizHours, events = []) {
                          title="${h.toFixed(1)}h / 8h"></div>
                 </div>
             </div>
-            <div class="weekly-col-body${hasBlocks ? '' : ' no-blocks'}${hasEventsClass}" data-day="${dn}">
+            <div class="weekly-col-body${hasBlocks ? '' : ' no-blocks'}${hasEventsClass}"
+                 data-day="${dn}"
+                 style="min-height:${gridHeight}px">
                 ${availZoneHtml}
                 ${hourLines}
                 ${eventTrackHtml}
                 ${!hasBlocks ? '<div class="weekly-no-blocks-text"><i class="fas fa-calendar-plus"></i><br>Sin bloques planeados</div>' : ''}
-                <div class="weekly-blocks-track" data-day="${dn}">
-                    ${colBlocks.map(b => _renderBlock(b, layout.get(b.id))).join('')}
+                <div class="weekly-blocks-track weekly-blocks-track--planned${plannedFull}" data-day="${dn}">
+                    ${plannedBlocks.map(b => _renderBlock(b, plannedLayout.get(b.id), { isMatch: matchedPlannedIds.has(b.id) })).join('')}
+                </div>
+                <div class="weekly-blocks-track weekly-blocks-track--log${logFull}" data-day="${dn}">
+                    ${logBlocks.map(b => _renderLogBlock(b, logLayout.get(b.id), { isMatch: matchedLogIds.has(b.id) })).join('')}
                 </div>
             </div>
             <div class="weekly-col-footer">
@@ -601,9 +640,9 @@ function _renderBusinessHoursLabel(bizHours) {
 
 // ── Block ────────────────────────────────────────────────────────────────────
 
-function _renderLogBlock(block, blockLayout = { column: 0, totalColumns: 1 }) {
+function _renderLogBlock(block, blockLayout = { column: 0, totalColumns: 1 }, opts = {}) {
     const { column, totalColumns } = blockLayout;
-    const top    = timeToMinutes(block.start_time) - HOUR_START * 60;
+    const top    = Math.max(0, timeToMinutes(block.start_time) - _gridHourStart * 60);
     const height = Math.max(24, timeToMinutes(block.end_time) - timeToMinutes(block.start_time));
     const durH   = blockDurationH(block);
     const title  = block.title || 'Log';
@@ -616,14 +655,20 @@ function _renderLogBlock(block, blockLayout = { column: 0, totalColumns: 1 }) {
         ? 'left:4px;right:4px;'
         : `left:calc(${(column / totalColumns * 100).toFixed(2)}% + 2px);width:calc(${(100 / totalColumns).toFixed(2)}% - 4px);right:auto;`;
 
+    const isMatch    = opts.isMatch ?? false;
+    const badgeLabel = isMatch ? 'Cumplido' : 'Ejecutado';
+    const badgeCls   = isMatch ? 'weekly-block-badge--fulfilled' : 'weekly-block-badge--log';
+    const matchCls   = isMatch ? ' weekly-block--fulfilled' : '';
+
     return `
-        <div class="weekly-block weekly-block--log task-block ${priorityCls}"
+        <div class="weekly-block weekly-block--log task-block ${priorityCls}${matchCls}"
              style="top:${top}px;height:${height}px;${posStyle}"
              data-action="weekly-open-log"
              data-block-id="${block.id}"
              data-source-ref="${_esc(sourceRef ?? '')}"
              data-source-type="${_esc(sourceType)}"
              title="Log de tiempo: ${_esc(title)}">
+            ${height >= 32 ? `<span class="weekly-block-badge ${badgeCls}">${badgeLabel}</span>` : ''}
             <div class="weekly-block-title">
                 <i class="fas fa-clock" style="font-size:.5625rem;margin-right:2px;opacity:.6"></i>${_esc(title)}
             </div>
@@ -633,10 +678,10 @@ function _renderLogBlock(block, blockLayout = { column: 0, totalColumns: 1 }) {
         </div>`;
 }
 
-function _renderBlock(block, blockLayout = { column: 0, totalColumns: 1 }) {
-    if (block.is_log) return _renderLogBlock(block, blockLayout);
+function _renderBlock(block, blockLayout = { column: 0, totalColumns: 1 }, opts = {}) {
+    if (block.is_log) return _renderLogBlock(block, blockLayout, opts);
     const { column, totalColumns } = blockLayout;
-    const top        = timeToMinutes(block.start_time) - HOUR_START * 60;
+    const top        = Math.max(0, timeToMinutes(block.start_time) - _gridHourStart * 60);
     const height     = Math.max(24, timeToMinutes(block.end_time) - timeToMinutes(block.start_time));
     const durH       = blockDurationH(block);
     const isPersonal = block.block_type === 'personal';
@@ -666,15 +711,19 @@ function _renderBlock(block, blockLayout = { column: 0, totalColumns: 1 }) {
         ? 'left:4px;right:4px;'
         : `left:calc(${(column / totalColumns * 100).toFixed(2)}% + 2px);width:calc(${(100 / totalColumns).toFixed(2)}% - 4px);right:auto;`;
 
+    const isMatch  = opts.isMatch ?? false;
+    const matchCls = isMatch ? ' weekly-block--fulfilled-shadow' : '';
+
     const styleBase = `top:${top}px;height:${height}px;${posStyle}`;
 
     return `
-        <div class="weekly-block ${blockClass}"
+        <div class="weekly-block ${blockClass}${matchCls}"
              style="${colorStyle}${styleBase}"
              draggable="true"
              data-action="weekly-edit-block"
              data-block-id="${block.id}">
             <div class="weekly-block-resize weekly-block-resize-top"></div>
+            ${height >= 32 && !isPersonal ? '<span class="weekly-block-badge weekly-block-badge--planned">Planeado</span>' : ''}
             <div class="weekly-block-title">${typeIcon}${recurIcon}${_esc(title)}</div>
             ${height >= 40
                 ? `<div class="weekly-block-time">${block.start_time}–${block.end_time} · ${durH}h</div>`
@@ -769,7 +818,7 @@ function _setupDragDrop() {
 
         if (_dragBlockId !== null) {
             const snapMins = _snapToGrid(e.clientY - rect.top);
-            let newStartM  = HOUR_START * 60 + snapMins;
+            let newStartM  = _gridHourStart * 60 + snapMins;
             let newEndM    = newStartM + _dragBlockDuration;
 
             // Clamp so the block fits within the visible range
@@ -777,8 +826,8 @@ function _setupDragDrop() {
                 newEndM   = HOUR_END * 60 + 59;
                 newStartM = newEndM - _dragBlockDuration;
             }
-            if (newStartM < HOUR_START * 60) {
-                newStartM = HOUR_START * 60;
+            if (newStartM < _gridHourStart * 60) {
+                newStartM = _gridHourStart * 60;
                 newEndM   = Math.min(newStartM + _dragBlockDuration, HOUR_END * 60 + 59);
             }
 
@@ -790,7 +839,7 @@ function _setupDragDrop() {
             if (saved) _render();
         } else if (_dragTaskId !== null) {
             const snapMins = _snapToGrid(e.clientY - rect.top);
-            const startM   = Math.max(HOUR_START * 60, HOUR_START * 60 + snapMins);
+            const startM   = Math.max(_gridHourStart * 60, _gridHourStart * 60 + snapMins);
             const endM     = Math.min(startM + 60, HOUR_END * 60 + 59);
 
             openBlockModal({
@@ -865,8 +914,8 @@ function _onResizePointerMove(e) {
         blockEl.style.height = (clampedEnd - origStartMin) / 60 * PX_PER_HOUR + 'px';
     } else {
         const snapped      = Math.round((origStartMin + deltaY / PX_PER_HOUR * 60) / SNAP_MINUTES) * SNAP_MINUTES;
-        const clampedStart = Math.min(Math.max(snapped, HOUR_START * 60), origEndMin - SNAP_MINUTES);
-        blockEl.style.top    = (clampedStart - HOUR_START * 60) / 60 * PX_PER_HOUR + 'px';
+        const clampedStart = Math.min(Math.max(snapped, _gridHourStart * 60), origEndMin - SNAP_MINUTES);
+        blockEl.style.top    = (clampedStart - _gridHourStart * 60) / 60 * PX_PER_HOUR + 'px';
         blockEl.style.height = (origEndMin - clampedStart) / 60 * PX_PER_HOUR + 'px';
     }
 }
@@ -884,7 +933,7 @@ async function _onResizePointerUp() {
 
     const newTop    = parseFloat(blockEl.style.top);
     const newHeight = parseFloat(blockEl.style.height);
-    const newStartM = Math.round(HOUR_START * 60 + newTop    / PX_PER_HOUR * 60);
+    const newStartM = Math.round(_gridHourStart * 60 + newTop    / PX_PER_HOUR * 60);
     const newEndM   = Math.round(newStartM        + newHeight / PX_PER_HOUR * 60);
 
     const saved = await updateBlock(blockId, {
@@ -894,8 +943,8 @@ async function _onResizePointerUp() {
 
     if (!saved) {
         // Revert DOM to the original position on PATCH failure.
-        blockEl.style.top    = (origStartMin - HOUR_START * 60) / 60 * PX_PER_HOUR + 'px';
-        blockEl.style.height = (origEndMin   - origStartMin)    / 60 * PX_PER_HOUR + 'px';
+        blockEl.style.top    = (origStartMin - _gridHourStart * 60) / 60 * PX_PER_HOUR + 'px';
+        blockEl.style.height = (origEndMin   - origStartMin)        / 60 * PX_PER_HOUR + 'px';
     } else {
         _render();
     }
@@ -906,8 +955,8 @@ function _onResizePointerCancel() {
     const { origStartMin, origEndMin, blockEl } = _resize;
     _resize = null;
     blockEl.draggable = true;
-    blockEl.style.top    = (origStartMin - HOUR_START * 60) / 60 * PX_PER_HOUR + 'px';
-    blockEl.style.height = (origEndMin   - origStartMin)    / 60 * PX_PER_HOUR + 'px';
+    blockEl.style.top    = (origStartMin - _gridHourStart * 60) / 60 * PX_PER_HOUR + 'px';
+    blockEl.style.height = (origEndMin   - origStartMin)        / 60 * PX_PER_HOUR + 'px';
 }
 
 // ── Double-click to create ────────────────────────────────────────────────────
@@ -929,8 +978,8 @@ function _setupDblClick() {
         const snapMins = _snapToGrid(e.clientY - rect.top);
 
         const startMins = Math.min(
-            HOUR_START * 60 + snapMins,
-            HOUR_END   * 60 - 1,
+            _gridHourStart * 60 + snapMins,
+            HOUR_END       * 60 - 1,
         );
         const endMins = Math.min(startMins + 60, HOUR_END * 60 + 59);
 
