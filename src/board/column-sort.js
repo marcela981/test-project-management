@@ -1,7 +1,7 @@
 /** Sort configurable por columna del Board; persistencia en localStorage. */
 
 // ── Comparators puros (exportados para tests) ─────────────────────────────────
-
+ 
 export function compareByTitle(a, b) {
     return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
 }
