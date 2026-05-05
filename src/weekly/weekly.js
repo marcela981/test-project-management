@@ -52,6 +52,9 @@ let _lastWeekEndDay   = null;
 // (next week / prev week) reuse the existing prefetch, never re-trigger it.
 let _calendarPrefetchDone = false;
 
+// Current-time indicator — one setInterval at most; replaced on each _render().
+let _timeLineTimer = null;
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -273,6 +276,7 @@ async function _render() {
     _logRenderPerf();
 
     _updateStickyMetrics();
+    _mountCurrentTimeLine(days);
 
     // Fase 3 — show "actualizando…" while a SWR revalidation is in flight,
     // and re-render once it resolves so the user sees fresh data.
@@ -514,7 +518,22 @@ function _renderNav(days) {
         ? `<div class="cal-period-nav-views" role="toolbar" aria-label="Vista del calendario">${_toolbarHtml}</div>`
         : '';
 
-    return renderPeriodNav({ label: range, actionPrefix: 'weekly', extraContent: viewsHtml });
+    const tzBadge = _renderTzBadge();
+
+    return renderPeriodNav({ label: range, actionPrefix: 'weekly', extraContent: viewsHtml + tzBadge });
+}
+
+function _renderTzBadge() {
+    const tz        = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const offsetMin = -new Date().getTimezoneOffset();
+    const sign      = offsetMin >= 0 ? '+' : '-';
+    const absH      = Math.floor(Math.abs(offsetMin) / 60);
+    const absM      = Math.abs(offsetMin) % 60;
+    const offsetStr = absM
+        ? `UTC${sign}${absH}:${String(absM).padStart(2, '0')}`
+        : `UTC${sign}${absH}`;
+    return `<span class="weekly-tz-badge"
+                  title="Los logs se guardan en UTC y se muestran en tu hora local">${tz} (${offsetStr})</span>`;
 }
 
 // ── Time axis ────────────────────────────────────────────────────────────────
@@ -1072,4 +1091,59 @@ function _today() {
 
 function _esc(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── Current-time indicator ────────────────────────────────────────────────────
+
+/**
+ * Mounts a red horizontal line inside today's column body and updates it every
+ * 60 seconds. Handles three edge cases automatically on each tick:
+ *   - Midnight crossing: _today() re-evaluated, line jumps to the new day's column.
+ *   - Week navigation: _render() clears _timeLineTimer before calling this again.
+ *   - Outside grid hours: line is removed when current hour < _gridHourStart.
+ *
+ * Formula (mirrors block positioning in _renderBlock / _renderLogBlock):
+ *   topPx = (currentHour - _gridHourStart) * PX_PER_HOUR + currentMinute
+ * With PX_PER_HOUR = 60, 1 minute = 1 pixel.
+ */
+function _mountCurrentTimeLine(days) {
+    if (_timeLineTimer) {
+        clearInterval(_timeLineTimer);
+        _timeLineTimer = null;
+    }
+
+    const update = () => {
+        if (!_container) return;
+
+        // Remove any existing indicator (handles midnight column-switch cleanly)
+        _container.querySelectorAll('.weekly-current-time').forEach(el => el.remove());
+
+        const today     = _today();
+        const todayDate = days.find(d => d.getTime() === today.getTime());
+        if (!todayDate) return; // visible week doesn't include today
+
+        const now = new Date();
+        const h   = now.getHours();
+        const m   = now.getMinutes();
+
+        if (h < _gridHourStart) return; // before grid start (e.g. 5 am when grid starts at 6)
+
+        const topPx     = (h - _gridHourStart) * PX_PER_HOUR + m;
+        const timeLabel = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+        const colBody = _container.querySelector(`.weekly-col-body[data-day="${todayDate.getDay()}"]`);
+        if (!colBody) return;
+
+        const el = document.createElement('div');
+        el.className  = 'weekly-current-time';
+        el.style.top  = topPx + 'px';
+        el.innerHTML  = `
+            <div class="weekly-current-time-dot"></div>
+            <div class="weekly-current-time-line"></div>
+            <span class="weekly-current-time-label">${timeLabel}</span>`;
+        colBody.appendChild(el);
+    };
+
+    update(); // paint immediately on render
+    _timeLineTimer = setInterval(update, 60_000);
 }
