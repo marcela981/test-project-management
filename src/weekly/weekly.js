@@ -97,7 +97,7 @@ export function renderWeekly(container, toolbarHtml = '') {
 
 // ── preferences-updated handler (Fase 5 Antipatrón 1) ────────────────────────
 
-function _onPreferencesUpdated(e) {
+async function _onPreferencesUpdated(e) {
     const newPrefs = (e?.detail && typeof e.detail === 'object') ? e.detail : getPreferences();
     const wsd      = newPrefs.week_start_day;
     const wed      = newPrefs.week_end_day;
@@ -111,7 +111,7 @@ function _onPreferencesUpdated(e) {
     // pick them up from the in-memory mirror without any /blocks request.
     // If the bounds shifted, drop the entry so the next fetchBlocks falls
     // back to the IDB → network path.
-    if (boundsChanged) invalidateBlocksCache(_weekStartIso);
+    if (boundsChanged) await invalidateBlocksCache(_weekStartIso);
     _render();
 }
 
@@ -150,6 +150,7 @@ export function handleWeeklyClick(action, el) {
         case 'weekly-edit-block': {
             const blockId = el.dataset.blockId;
             const block   = getBlocks().find(b => b.id === blockId);
+            console.debug('[weekly:edit]', { blockId: el.dataset.blockId, foundBlock: !!block, blockSnapshot: block });
             if (block) openBlockModal(
                 { mode: 'edit', day: block.day, weekStartIso: _weekStartIso, block },
                 () => _render()
@@ -850,6 +851,8 @@ function _setupDragDrop() {
                 newEndM   = Math.min(newStartM + _dragBlockDuration, HOUR_END * 60 + 59);
             }
 
+            console.debug('[weekly:drop]', { blockId: _dragBlockId, day: targetDay,
+                newStart: newStartM, newEnd: newEndM });
             const saved = await updateBlock(_dragBlockId, {
                 day_of_week: targetDay,
                 start_time:  _minsToTime(newStartM),

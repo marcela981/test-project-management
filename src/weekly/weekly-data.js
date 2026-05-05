@@ -141,7 +141,7 @@ async function _fetchBlocksFromNetwork(weekStartIsoDate) {
     // Fetch manual/recurrence blocks and time-log entries in parallel.
     const [list, unifiedList] = await Promise.all([
         _apiFetch(`/blocks?week_start=${weekStartIsoDate}`),
-        _apiFetch(`/unified?week_start=${weekStartIsoDate}`).catch(() => []),
+        _apiFetch(`/unified?week_start=${weekStartIsoDate}`).catch(err => { console.error('[weekly] /unified failed:', err); return []; }),
     ]);
     if (!Array.isArray(list)) return [];
 
@@ -232,9 +232,34 @@ export function getBlocks() {
     return _memBlocks.get(_currentWeekStart)?.blocks ?? [];
 }
 
-export function invalidateBlocksCache(weekStartIsoDate) {
+export async function invalidateBlocksCache(weekStartIsoDate) {
     _memBlocks.delete(weekStartIsoDate);
-    pcDelete(_blocksKey(weekStartIsoDate)).catch(() => {});
+    await pcDelete(_blocksKey(weekStartIsoDate));
+}
+
+async function _upsertBlockInCache(weekIso, savedBlock) {
+    const entry = _memBlocks.get(weekIso);
+    if (!entry) return;
+    const idx = entry.blocks.findIndex(b => b.id === savedBlock.id);
+    const newBlocks = idx >= 0
+        ? entry.blocks.map((b, i) => (i === idx ? savedBlock : b))
+        : [...entry.blocks, savedBlock];
+    const newEntry = { blocks: newBlocks, fetchedAt: Date.now() };
+    _memBlocks.set(weekIso, newEntry);
+    await pcSet(_blocksKey(weekIso), newEntry, BLOCKS_TTL_MS);
+}
+
+async function _removeBlockInCache(weekIso, blockId, scope) {
+    if (scope === 'all' || scope === 'future') {
+        await invalidateBlocksCache(weekIso);
+        return;
+    }
+    const entry = _memBlocks.get(weekIso);
+    if (!entry) return;
+    const newBlocks = entry.blocks.filter(b => b.id !== String(blockId));
+    const newEntry = { blocks: newBlocks, fetchedAt: Date.now() };
+    _memBlocks.set(weekIso, newEntry);
+    await pcSet(_blocksKey(weekIso), newEntry, BLOCKS_TTL_MS);
 }
 
 export function isBlocksCacheWarm(weekStartIsoDate) {
@@ -280,8 +305,9 @@ export async function createBlock(block) {
             body: JSON.stringify(block),
         });
         if (!saved) return null;
-        invalidateBlocksCache(_currentWeekStart);
-        return _normalizeBlock(saved);
+        const normalized = _normalizeBlock(saved);
+        await _upsertBlockInCache(_currentWeekStart, normalized);
+        return normalized;
     } catch (e) {
         console.error('[weekly] createBlock:', e);
         alert(`No se pudo crear el bloque: ${e.message}`);
@@ -297,9 +323,15 @@ export async function updateBlock(blockId, updates, scope = null) {
             body: JSON.stringify(body),
         });
         if (!saved) return null;
-        invalidateBlocksCache(_currentWeekStart);
-        return _normalizeBlock(saved);
+        const normalized = _normalizeBlock(saved);
+        if (scope === 'all') {
+            await invalidateBlocksCache(_currentWeekStart);
+        } else {
+            await _upsertBlockInCache(_currentWeekStart, normalized);
+        }
+        return normalized;
     } catch (e) {
+        console.error('[weekly:update] failed', { blockId, updates, error: e });
         console.error('[weekly] updateBlock:', e);
         alert(`No se pudo actualizar el bloque: ${e.message}`);
         return null;
@@ -310,7 +342,7 @@ export async function removeBlock(blockId, scope = null) {
     try {
         const path = scope ? `/blocks/${blockId}?scope=${scope}` : `/blocks/${blockId}`;
         await _apiFetch(path, { method: 'DELETE' });
-        invalidateBlocksCache(_currentWeekStart);
+        await _removeBlockInCache(_currentWeekStart, blockId, scope);
         return true;
     } catch (e) {
         console.error('[weekly] removeBlock:', e);
@@ -322,8 +354,12 @@ export async function removeBlock(blockId, scope = null) {
 // Converts a WeeklyBlockUnified entry (source=task|activity) to the display shape.
 // start_at is a UTC ISO 8601 string with Z suffix; converted to user's local timezone.
 function _normalizeLogBlock(b) {
-    const startTime = formatInUserTz(b.start_at, 'HH:mm');
+    let startTime = formatInUserTz(b.start_at, 'HH:mm');
     const localDate = formatInUserTz(b.start_at, 'yyyy-MM-dd');
+    if (startTime < '06:00') {
+        console.warn('[weekly] log block before 06:00 (possible start_at NULL fallback):', b.id, b.start_at);
+        startTime = '06:00';
+    }
 
     // Compute end by adding duration, then clamp if it crosses midnight in user's TZ.
     const endMs    = new Date(b.start_at).getTime() + b.duration_minutes * 60_000;
