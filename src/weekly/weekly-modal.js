@@ -34,6 +34,7 @@ function _getBlockFormState() {
         unit:       document.getElementById('weeklyRruleUnit')?.value ?? 'weekly',
         days:       _getSelectedRruleDays(),
         until:      document.getElementById('weeklyBlockRecurrenceUntil')?.value ?? '',
+        notes:      document.getElementById('weeklyBlockNotes')?.value ?? '',
     };
 }
 
@@ -144,6 +145,8 @@ export async function submitBlock() {
     }
 
     if (rruleStr) payload.rrule_string = rruleStr;
+
+    payload.notes = document.getElementById('weeklyBlockNotes')?.value.trim() || null;
 
     const local        = getBlocks();
     const overlapCheck = { day, start_time: startTime, end_time: endTime };
@@ -285,6 +288,13 @@ function _buildContent() {
                 <input type="time" id="weeklyBlockEnd" class="form-input"
                        value="${isEdit ? block.end_time : _defaultEnd}">
             </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="weeklyBlockNotes">Notas (opcional)</label>
+            <textarea id="weeklyBlockNotes" class="form-input" rows="3"
+                      maxlength="2000" placeholder="Detalles, contexto, recordatorios..."
+            >${isEdit ? _esc(block.notes ?? '') : ''}</textarea>
         </div>
 
         ${_renderRecurrenceFields()}

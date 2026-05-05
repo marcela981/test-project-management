@@ -15,7 +15,7 @@
  */
 
 import { CONFIG } from '../../core/config.js';
-import { getToken } from '../../auth/auth.js';
+import { authedFetch, apiFetch } from '../../api/http.js';
 
 const BASE = `${CONFIG.BACKEND_BASE_URL}/api/calendar`;
 
@@ -130,13 +130,8 @@ export function maybePrefetchOnFirstMount(view, rangeStart, rangeEnd) {
  * serving stale data from Redis.
  */
 export async function invalidateBackendCache() {
-    const token = getToken();
-    if (!token) return;
     try {
-        await fetch(`${BASE}/cache/invalidate`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-        });
+        await apiFetch('/api/calendar/cache/invalidate', { method: 'POST' });
     } catch {
         // Best-effort; no UI surfacing.
     }
@@ -149,7 +144,6 @@ async function _refresh(key, startIso, endIso, view, prefetch) {
     if (_inFlight.has(key)) return _inFlight.get(key);
 
     const promise = (async () => {
-        const token = getToken();
         const params = new URLSearchParams({
             start: startIso,
             end:   endIso,
@@ -157,14 +151,14 @@ async function _refresh(key, startIso, endIso, view, prefetch) {
             prefetch: prefetch ? 'true' : 'false',
         });
         try {
-            const res = await fetch(`${BASE}/events?${params}`, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-            });
+            const res = await authedFetch(`${BASE}/events?${params}`, {});
+            // null means double-401 → logout already called
+            if (!res) return { events: [], cache: 'miss' };
             if (!res.ok) {
-                // Don't poison the cache on auth/provider failures — the next
+                // Don't poison the cache on provider/server failures — the next
                 // call should retry cleanly. Surface an empty result so the
                 // weekly view degrades gracefully (existing blocks still show).
-                if (res.status === 401 || res.status === 503 || res.status >= 500) {
+                if (res.status === 503 || res.status >= 500) {
                     return { events: [], cache: 'miss' };
                 }
                 throw new Error(`calendar events HTTP ${res.status}`);

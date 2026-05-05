@@ -3,11 +3,9 @@
 import { startOfDay, getDay, subDays, addDays, format } from 'date-fns';
 import { formatInUserTz } from '../lib/time';
 import { expandBlocks } from '../calendar/recurrence/rrule-expander.js';
-import { CONFIG } from '../core/config.js';
-import { getToken, logout, getCachedUser } from '../auth/auth.js';
+import { getCachedUser } from '../auth/auth.js';
 import { pcGet, pcSet, pcDelete } from '../core/persistent-cache.js';
-
-const WEEKLY_API = `${CONFIG.BACKEND_BASE_URL}/api/weekly`;
+import { apiFetch } from '../api/http.js';
 
 // Estado en memoria (última respuesta del backend).
 let _cachedPreferences = null;
@@ -28,33 +26,6 @@ let   _inFlightPrefs  = null;
 // Session-scoped singleton promise for fetchPreferences (see getPrefsOnce).
 let _prefsPromise = null;
 
-// ── HTTP helper ──────────────────────────────────────────────────────────────
-
-async function _apiFetch(path, options = {}) {
-    const token = getToken();
-    const res = await fetch(`${WEEKLY_API}${path}`, {
-        headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        ...options,
-    });
-
-    if (res.status === 401) { logout(); return null; }
-
-    if (!res.ok) {
-        let msg = `API ${res.status}`;
-        try {
-            const err = await res.json();
-            if (err?.detail) msg = err.detail;
-        } catch (_) { /* body no JSON */ }
-        throw new Error(msg);
-    }
-
-    const text = await res.text();
-    return text ? JSON.parse(text) : {};
-}
-
 // ── Cache key helpers ────────────────────────────────────────────────────────
 
 function _userId() {
@@ -73,7 +44,7 @@ async function _fetchPrefsFromNetwork() {
     if (_inFlightPrefs) return _inFlightPrefs;
     _inFlightPrefs = (async () => {
         try {
-            const p = await _apiFetch('/preferences');
+            const p = await apiFetch('/api/weekly/preferences');
             if (p) {
                 _cachedPreferences = p;
                 pcSet(_prefsKey(), p, PREFS_TTL_MS).catch(() => {});
@@ -117,7 +88,7 @@ export function getPreferences() {
 
 export async function savePreferences(prefs) {
     try {
-        const saved = await _apiFetch('/preferences', {
+        const saved = await apiFetch('/api/weekly/preferences', {
             method: 'PUT',
             body: JSON.stringify(prefs),
         });
@@ -140,8 +111,8 @@ export async function savePreferences(prefs) {
 async function _fetchBlocksFromNetwork(weekStartIsoDate) {
     // Fetch manual/recurrence blocks and time-log entries in parallel.
     const [list, unifiedList] = await Promise.all([
-        _apiFetch(`/blocks?week_start=${weekStartIsoDate}`),
-        _apiFetch(`/unified?week_start=${weekStartIsoDate}`).catch(() => []),
+        apiFetch(`/api/weekly/blocks?week_start=${weekStartIsoDate}`),
+        apiFetch(`/api/weekly/unified?week_start=${weekStartIsoDate}`).catch(err => { console.error('[weekly] /unified failed:', err); return []; }),
     ]);
     if (!Array.isArray(list)) return [];
 
@@ -232,9 +203,34 @@ export function getBlocks() {
     return _memBlocks.get(_currentWeekStart)?.blocks ?? [];
 }
 
-export function invalidateBlocksCache(weekStartIsoDate) {
+export async function invalidateBlocksCache(weekStartIsoDate) {
     _memBlocks.delete(weekStartIsoDate);
-    pcDelete(_blocksKey(weekStartIsoDate)).catch(() => {});
+    await pcDelete(_blocksKey(weekStartIsoDate));
+}
+
+async function _upsertBlockInCache(weekIso, savedBlock) {
+    const entry = _memBlocks.get(weekIso);
+    if (!entry) return;
+    const idx = entry.blocks.findIndex(b => b.id === savedBlock.id);
+    const newBlocks = idx >= 0
+        ? entry.blocks.map((b, i) => (i === idx ? savedBlock : b))
+        : [...entry.blocks, savedBlock];
+    const newEntry = { blocks: newBlocks, fetchedAt: Date.now() };
+    _memBlocks.set(weekIso, newEntry);
+    await pcSet(_blocksKey(weekIso), newEntry, BLOCKS_TTL_MS);
+}
+
+async function _removeBlockInCache(weekIso, blockId, scope) {
+    if (scope === 'all' || scope === 'future') {
+        await invalidateBlocksCache(weekIso);
+        return;
+    }
+    const entry = _memBlocks.get(weekIso);
+    if (!entry) return;
+    const newBlocks = entry.blocks.filter(b => b.id !== String(blockId));
+    const newEntry = { blocks: newBlocks, fetchedAt: Date.now() };
+    _memBlocks.set(weekIso, newEntry);
+    await pcSet(_blocksKey(weekIso), newEntry, BLOCKS_TTL_MS);
 }
 
 export function isBlocksCacheWarm(weekStartIsoDate) {
@@ -275,13 +271,14 @@ export function primeBlocksCache(weekIso, entry) {
 
 export async function createBlock(block) {
     try {
-        const saved = await _apiFetch('/blocks', {
+        const saved = await apiFetch('/api/weekly/blocks', {
             method: 'POST',
             body: JSON.stringify(block),
         });
         if (!saved) return null;
-        invalidateBlocksCache(_currentWeekStart);
-        return _normalizeBlock(saved);
+        const normalized = _normalizeBlock(saved);
+        await _upsertBlockInCache(_currentWeekStart, normalized);
+        return normalized;
     } catch (e) {
         console.error('[weekly] createBlock:', e);
         alert(`No se pudo crear el bloque: ${e.message}`);
@@ -292,14 +289,20 @@ export async function createBlock(block) {
 export async function updateBlock(blockId, updates, scope = null) {
     try {
         const body = scope ? { ...updates, scope } : updates;
-        const saved = await _apiFetch(`/blocks/${blockId}`, {
+        const saved = await apiFetch(`/api/weekly/blocks/${blockId}`, {
             method: 'PATCH',
             body: JSON.stringify(body),
         });
         if (!saved) return null;
-        invalidateBlocksCache(_currentWeekStart);
-        return _normalizeBlock(saved);
+        const normalized = _normalizeBlock(saved);
+        if (scope === 'all') {
+            await invalidateBlocksCache(_currentWeekStart);
+        } else {
+            await _upsertBlockInCache(_currentWeekStart, normalized);
+        }
+        return normalized;
     } catch (e) {
+        console.error('[weekly:update] failed', { blockId, updates, error: e });
         console.error('[weekly] updateBlock:', e);
         alert(`No se pudo actualizar el bloque: ${e.message}`);
         return null;
@@ -308,9 +311,9 @@ export async function updateBlock(blockId, updates, scope = null) {
 
 export async function removeBlock(blockId, scope = null) {
     try {
-        const path = scope ? `/blocks/${blockId}?scope=${scope}` : `/blocks/${blockId}`;
-        await _apiFetch(path, { method: 'DELETE' });
-        invalidateBlocksCache(_currentWeekStart);
+        const path = scope ? `/api/weekly/blocks/${blockId}?scope=${scope}` : `/api/weekly/blocks/${blockId}`;
+        await apiFetch(path, { method: 'DELETE' });
+        await _removeBlockInCache(_currentWeekStart, blockId, scope);
         return true;
     } catch (e) {
         console.error('[weekly] removeBlock:', e);
@@ -322,8 +325,12 @@ export async function removeBlock(blockId, scope = null) {
 // Converts a WeeklyBlockUnified entry (source=task|activity) to the display shape.
 // start_at is a UTC ISO 8601 string with Z suffix; converted to user's local timezone.
 function _normalizeLogBlock(b) {
-    const startTime = formatInUserTz(b.start_at, 'HH:mm');
+    let startTime = formatInUserTz(b.start_at, 'HH:mm');
     const localDate = formatInUserTz(b.start_at, 'yyyy-MM-dd');
+    if (startTime < '06:00') {
+        console.warn('[weekly] log block before 06:00 (possible start_at NULL fallback):', b.id, b.start_at);
+        startTime = '06:00';
+    }
 
     // Compute end by adding duration, then clamp if it crosses midnight in user's TZ.
     const endMs    = new Date(b.start_at).getTime() + b.duration_minutes * 60_000;

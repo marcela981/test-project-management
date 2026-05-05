@@ -55,6 +55,8 @@ let _calendarPrefetchDone = false;
 // Current-time indicator — one setInterval at most; replaced on each _render().
 let _timeLineTimer = null;
 
+const _sameId = (a, b) => String(a) === String(b);
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -92,12 +94,13 @@ export function renderWeekly(container, toolbarHtml = '') {
         window.addEventListener('pointermove',         _onResizePointerMove);
         window.addEventListener('pointerup',           _onResizePointerUp);
         window.addEventListener('pointercancel',       _onResizePointerCancel);
+        window.addEventListener('blur',                _onResizePointerCancel);
     }
 }
 
 // ── preferences-updated handler (Fase 5 Antipatrón 1) ────────────────────────
 
-function _onPreferencesUpdated(e) {
+async function _onPreferencesUpdated(e) {
     const newPrefs = (e?.detail && typeof e.detail === 'object') ? e.detail : getPreferences();
     const wsd      = newPrefs.week_start_day;
     const wed      = newPrefs.week_end_day;
@@ -111,7 +114,7 @@ function _onPreferencesUpdated(e) {
     // pick them up from the in-memory mirror without any /blocks request.
     // If the bounds shifted, drop the entry so the next fetchBlocks falls
     // back to the IDB → network path.
-    if (boundsChanged) invalidateBlocksCache(_weekStartIso);
+    if (boundsChanged) await invalidateBlocksCache(_weekStartIso);
     _render();
 }
 
@@ -149,7 +152,8 @@ export function handleWeeklyClick(action, el) {
         }
         case 'weekly-edit-block': {
             const blockId = el.dataset.blockId;
-            const block   = getBlocks().find(b => b.id === blockId);
+            const block   = getBlocks().find(b => _sameId(b.id, blockId));
+            console.debug('[weekly:edit]', { blockId: el.dataset.blockId, foundBlock: !!block, blockSnapshot: block });
             if (block) openBlockModal(
                 { mode: 'edit', day: block.day, weekStartIso: _weekStartIso, block },
                 () => _render()
@@ -158,7 +162,7 @@ export function handleWeeklyClick(action, el) {
         }
         case 'weekly-remove-block': {
             const blockId = el.dataset.blockId;
-            const block   = getBlocks().find(b => b.id === blockId);
+            const block   = getBlocks().find(b => _sameId(b.id, blockId));
             if (block?.series_id || block?.is_virtual) {
                 askScope().then(scope => {
                     if (scope === null) return;
@@ -733,14 +737,15 @@ function _renderBlock(block, blockLayout = { column: 0, totalColumns: 1 }, opts 
     const isMatch  = opts.isMatch ?? false;
     const matchCls = isMatch ? ' weekly-block--fulfilled-shadow' : '';
 
-    const styleBase = `top:${top}px;height:${height}px;${posStyle}`;
+    const notesTitle = block.notes && height >= 60 ? ` title="${_esc(block.notes)}"` : '';
+    const styleBase  = `top:${top}px;height:${height}px;${posStyle}`;
 
     return `
         <div class="weekly-block ${blockClass}${matchCls}"
              style="${colorStyle}${styleBase}"
              draggable="true"
              data-action="weekly-edit-block"
-             data-block-id="${block.id}">
+             data-block-id="${block.id}"${notesTitle}>
             <div class="weekly-block-resize weekly-block-resize-top"></div>
             ${height >= 32 && !isPersonal ? '<span class="weekly-block-badge weekly-block-badge--planned">Planeado</span>' : ''}
             <div class="weekly-block-title">${typeIcon}${recurIcon}${_esc(title)}</div>
@@ -767,7 +772,7 @@ function _setupDragDrop() {
         if (!rm) return;
         e.stopPropagation();
         const blockId = rm.dataset.blockId;
-        const block   = getBlocks().find(b => b.id === blockId);
+        const block   = getBlocks().find(b => _sameId(b.id, blockId));
         if (block?.series_id || block?.is_virtual) {
             askScope().then(scope => {
                 if (scope === null) return;
@@ -787,7 +792,7 @@ function _setupDragDrop() {
             _dragTaskId  = null;
             blockEl.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
-            const block = getBlocks().find(b => b.id === _dragBlockId);
+            const block = getBlocks().find(b => _sameId(b.id, _dragBlockId));
             _dragBlockDuration = block
                 ? timeToMinutes(block.end_time) - timeToMinutes(block.start_time)
                 : 60;
@@ -850,6 +855,8 @@ function _setupDragDrop() {
                 newEndM   = Math.min(newStartM + _dragBlockDuration, HOUR_END * 60 + 59);
             }
 
+            console.debug('[weekly:drop]', { blockId: _dragBlockId, day: targetDay,
+                newStart: newStartM, newEnd: newEndM });
             const saved = await updateBlock(_dragBlockId, {
                 day_of_week: targetDay,
                 start_time:  _minsToTime(newStartM),
@@ -886,6 +893,8 @@ function _setupResize() {
         if (e.target.closest('.weekly-block-resize')) e.stopPropagation();
     });
 
+    _container.addEventListener('contextmenu', _onResizePointerCancel);
+
     _container.addEventListener('pointerdown', e => {
         const handle = e.target.closest('.weekly-block-resize');
         if (!handle) return;
@@ -897,7 +906,7 @@ function _setupResize() {
         if (!blockEl) return;
 
         const blockId = blockEl.dataset.blockId;
-        const block   = getBlocks().find(b => b.id === blockId);
+        const block   = getBlocks().find(b => _sameId(b.id, blockId));
         if (!block) return;
 
         const edge = handle.classList.contains('weekly-block-resize-top') ? 'top' : 'bottom';
