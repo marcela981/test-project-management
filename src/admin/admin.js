@@ -6,6 +6,7 @@ import {
     addTeamMember, removeTeamMember, setUserRole, syncUserFromNC,
 } from '../dashboard/dashApi.js';
 import { escHtml as _esc, initials as _initials } from '../shared/utils.js';
+
 let _user     = null;
 let _allTeams = [];
 
