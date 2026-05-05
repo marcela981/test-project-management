@@ -1,4 +1,5 @@
 /** Utilidades: formato de tiempo/fecha, IDs, efectividad, etiquetas de actividad. */
+import { formatInUserTz } from '../lib/time';
 
 export function formatTime(seconds) {
     const s = Math.max(0, Math.floor(seconds));
@@ -113,8 +114,7 @@ export function formatRelativeTime(dateInput) {
 
 export function formatTimeOfDay(isoStr) {
     if (!isoStr) return '';
-    const date = new Date(isoStr);
-    return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    return formatInUserTz(isoStr, 'HH:mm');
 }
 
 export function escHtml(str) {

@@ -1,6 +1,7 @@
 /** Capa de datos del weekly tracker: llamadas REST a /api/weekly. */
 
 import { startOfDay, getDay, subDays, addDays, format } from 'date-fns';
+import { formatInUserTz } from '../lib/time';
 import { expandBlocks } from '../calendar/recurrence/rrule-expander.js';
 import { CONFIG } from '../core/config.js';
 import { getToken, logout, getCachedUser } from '../auth/auth.js';
@@ -319,23 +320,22 @@ export async function removeBlock(blockId, scope = null) {
 }
 
 // Converts a WeeklyBlockUnified entry (source=task|activity) to the display shape.
-// start_at is stored as a naive datetime string (no Z suffix) — parsed as local time.
+// start_at is a UTC ISO 8601 string with Z suffix; converted to user's local timezone.
 function _normalizeLogBlock(b) {
-    const hh        = n => String(n).padStart(2, '0');
-    const startDate = new Date(b.start_at);
-    const startTime = `${hh(startDate.getHours())}:${hh(startDate.getMinutes())}`;
+    const startTime = formatInUserTz(b.start_at, 'HH:mm');
+    const localDate = formatInUserTz(b.start_at, 'yyyy-MM-dd');
 
-    const endMs   = startDate.getTime() + b.duration_minutes * 60_000;
-    const endDate = new Date(endMs);
-    // Clamp to 23:59 so the block never overflows the visible day grid.
-    const endH    = Math.min(endDate.getHours(), 23);
-    const endTime = `${hh(endH)}:${hh(endDate.getMinutes())}`;
+    // Compute end by adding duration, then clamp if it crosses midnight in user's TZ.
+    const endMs    = new Date(b.start_at).getTime() + b.duration_minutes * 60_000;
+    const endIso   = new Date(endMs).toISOString();
+    const endDay   = formatInUserTz(endIso, 'yyyy-MM-dd');
+    const endTime  = endDay > localDate ? '23:59' : formatInUserTz(endIso, 'HH:mm');
 
     const isTask = b.source === 'task';
     return {
         id:               b.id,
-        week_start:       b.start_at.slice(0, 10),
-        day:              startDate.getDay(),
+        week_start:       localDate,
+        day:              new Date(b.start_at).getDay(),  // local day of week (0=Sun)
         block_type:       isTask ? 'task' : 'activity',
         task_id:          isTask ? b.source_ref_id : null,
         activity_id:      isTask ? null : b.source_ref_id,
