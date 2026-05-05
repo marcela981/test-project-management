@@ -11,20 +11,23 @@ function showToast(message, type = 'success') {
 }
 
 function buildPayload({ periodType, customStart, customEnd, scopeMode, selectedTeamIds, selectedUserIds, includeIndividualSheets, includeTeamSheets, topN }) {
-    const payload = {
-        period_type:               periodType,
-        scope_mode:                scopeMode,
-        include_individual_sheets: includeIndividualSheets,
-        include_team_sheets:       includeTeamSheets,
-        top_n:                     topN,
+    return {
+        period: {
+            type:       periodType,
+            start_date: periodType === 'custom' ? customStart : null,
+            end_date:   periodType === 'custom' ? customEnd   : null,
+        },
+        scope: {
+            mode:     scopeMode,
+            team_ids: scopeMode === 'teams'     ? selectedTeamIds : null,
+            user_ids: scopeMode === 'employees' ? selectedUserIds : null,
+        },
+        options: {
+            include_individual_sheets: includeIndividualSheets,
+            include_team_sheets:       includeTeamSheets,
+            top_n:                     topN,
+        },
     };
-    if (periodType === 'custom') {
-        payload.start_date = customStart;
-        payload.end_date   = customEnd;
-    }
-    if (scopeMode === 'teams')     payload.team_ids = selectedTeamIds;
-    if (scopeMode === 'employees') payload.user_ids = selectedUserIds;
-    return payload;
 }
 
 function validate({ periodType, customStart, customEnd, scopeMode, selectedTeamIds, selectedUserIds }) {
@@ -75,7 +78,7 @@ function MultiSelect({ items, loading, selectedIds, onToggle, placeholder, label
                 onChange={e => setSearch(e.target.value)}
             />
             <div style={{
-                maxHeight: '160px',
+                maxHeight: '240px',
                 overflowY: 'auto',
                 border: '1px solid var(--color-border)',
                 borderRadius: 'var(--radius-md)',
@@ -223,7 +226,7 @@ export default function DownloadMetricsModal({ isOpen, onClose }) {
             className="modal-overlay active"
             onClick={e => { if (e.target === e.currentTarget && !isGenerating) onClose(); }}
         >
-            <div className="modal" style={{ maxWidth: '560px' }}>
+            <div className="modal">
                 <div className="modal-header">
                     <span className="modal-title">
                         <i className="fas fa-file-excel" style={{ marginRight: '0.5rem', color: 'var(--color-success)' }} />
@@ -240,7 +243,7 @@ export default function DownloadMetricsModal({ isOpen, onClose }) {
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}>
                     <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
                         {/* ── Período ── */}
