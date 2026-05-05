@@ -6,8 +6,31 @@ import {
     addTeamMember, removeTeamMember, setUserRole, syncUserFromNC,
 } from '../dashboard/dashApi.js';
 import { escHtml as _esc, initials as _initials } from '../shared/utils.js';
+import { createElement as h } from 'react';
+import { createRoot } from 'react-dom/client';
+import DownloadMetricsModal from './components/DownloadMetricsModal.jsx';
+
 let _user     = null;
 let _allTeams = [];
+
+const _PRIVILEGED = new Set(['admin', 'leader', 'supervisor']);
+let _metricsModalContainer = null;
+let _metricsModalRoot      = null;
+
+function _renderMetricsModal(isOpen) {
+    _metricsModalRoot.render(
+        h(DownloadMetricsModal, { isOpen, onClose: () => _renderMetricsModal(false) })
+    );
+}
+
+function _openMetricsModal() {
+    if (!_metricsModalContainer) {
+        _metricsModalContainer = document.createElement('div');
+        document.body.appendChild(_metricsModalContainer);
+        _metricsModalRoot = createRoot(_metricsModalContainer);
+    }
+    _renderMetricsModal(true);
+}
 
 export async function renderAdmin(container, user) {
     _user = user;
@@ -21,8 +44,12 @@ export async function renderAdmin(container, user) {
     ];
 
     container.innerHTML = `
-        <div class="view-header">
+        <div class="view-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
             <h2 class="view-title"><i class="fas fa-cog"></i> Administración</h2>
+            ${_PRIVILEGED.has(user.role) ? `
+            <button class="btn btn-primary btn-sm" id="btnDownloadMetrics">
+                <i class="fas fa-download"></i> Descargar Métricas
+            </button>` : ''}
         </div>
         <div class="skills-tabs">
             ${tabs.map((t, i) => `
@@ -32,6 +59,8 @@ export async function renderAdmin(container, user) {
         <div id="adminContent">
             <div class="loading-state"><i class="fas fa-spinner fa-spin"></i> Cargando…</div>
         </div>`;
+
+    container.querySelector('#btnDownloadMetrics')?.addEventListener('click', _openMetricsModal);
 
     container.querySelectorAll('.skills-tab').forEach(tab => {
         tab.addEventListener('click', () => {
