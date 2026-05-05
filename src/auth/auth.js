@@ -90,6 +90,18 @@ export async function refreshAccessToken() {
     return _refreshInFlight;
 }
 
+/**
+ * If the access token expires within 60 s, proactively refreshes it before
+ * the next request. Reduces 401s at token-expiry boundaries.
+ */
+export async function shouldRefreshSoon() {
+    const expiresAt = parseInt(_get(EXPIRES_AT_KEY) ?? '0', 10);
+    if (!expiresAt) return;
+    if (Date.now() > expiresAt - 60_000) {
+        await refreshAccessToken().catch(() => {});
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Inactividad: el token se invalida localmente si no hay actividad en 24h
 // ---------------------------------------------------------------------------

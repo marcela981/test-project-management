@@ -3,11 +3,9 @@
 import { startOfDay, getDay, subDays, addDays, format } from 'date-fns';
 import { formatInUserTz } from '../lib/time';
 import { expandBlocks } from '../calendar/recurrence/rrule-expander.js';
-import { CONFIG } from '../core/config.js';
-import { getToken, logout, getCachedUser } from '../auth/auth.js';
+import { getCachedUser } from '../auth/auth.js';
 import { pcGet, pcSet, pcDelete } from '../core/persistent-cache.js';
-
-const WEEKLY_API = `${CONFIG.BACKEND_BASE_URL}/api/weekly`;
+import { apiFetch } from '../api/http.js';
 
 // Estado en memoria (última respuesta del backend).
 let _cachedPreferences = null;
@@ -28,33 +26,6 @@ let   _inFlightPrefs  = null;
 // Session-scoped singleton promise for fetchPreferences (see getPrefsOnce).
 let _prefsPromise = null;
 
-// ── HTTP helper ──────────────────────────────────────────────────────────────
-
-async function _apiFetch(path, options = {}) {
-    const token = getToken();
-    const res = await fetch(`${WEEKLY_API}${path}`, {
-        headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        ...options,
-    });
-
-    if (res.status === 401) { logout(); return null; }
-
-    if (!res.ok) {
-        let msg = `API ${res.status}`;
-        try {
-            const err = await res.json();
-            if (err?.detail) msg = err.detail;
-        } catch (_) { /* body no JSON */ }
-        throw new Error(msg);
-    }
-
-    const text = await res.text();
-    return text ? JSON.parse(text) : {};
-}
-
 // ── Cache key helpers ────────────────────────────────────────────────────────
 
 function _userId() {
@@ -73,7 +44,7 @@ async function _fetchPrefsFromNetwork() {
     if (_inFlightPrefs) return _inFlightPrefs;
     _inFlightPrefs = (async () => {
         try {
-            const p = await _apiFetch('/preferences');
+            const p = await apiFetch('/api/weekly/preferences');
             if (p) {
                 _cachedPreferences = p;
                 pcSet(_prefsKey(), p, PREFS_TTL_MS).catch(() => {});
@@ -117,7 +88,7 @@ export function getPreferences() {
 
 export async function savePreferences(prefs) {
     try {
-        const saved = await _apiFetch('/preferences', {
+        const saved = await apiFetch('/api/weekly/preferences', {
             method: 'PUT',
             body: JSON.stringify(prefs),
         });
@@ -140,8 +111,8 @@ export async function savePreferences(prefs) {
 async function _fetchBlocksFromNetwork(weekStartIsoDate) {
     // Fetch manual/recurrence blocks and time-log entries in parallel.
     const [list, unifiedList] = await Promise.all([
-        _apiFetch(`/blocks?week_start=${weekStartIsoDate}`),
-        _apiFetch(`/unified?week_start=${weekStartIsoDate}`).catch(err => { console.error('[weekly] /unified failed:', err); return []; }),
+        apiFetch(`/api/weekly/blocks?week_start=${weekStartIsoDate}`),
+        apiFetch(`/api/weekly/unified?week_start=${weekStartIsoDate}`).catch(err => { console.error('[weekly] /unified failed:', err); return []; }),
     ]);
     if (!Array.isArray(list)) return [];
 
@@ -300,7 +271,7 @@ export function primeBlocksCache(weekIso, entry) {
 
 export async function createBlock(block) {
     try {
-        const saved = await _apiFetch('/blocks', {
+        const saved = await apiFetch('/api/weekly/blocks', {
             method: 'POST',
             body: JSON.stringify(block),
         });
@@ -318,7 +289,7 @@ export async function createBlock(block) {
 export async function updateBlock(blockId, updates, scope = null) {
     try {
         const body = scope ? { ...updates, scope } : updates;
-        const saved = await _apiFetch(`/blocks/${blockId}`, {
+        const saved = await apiFetch(`/api/weekly/blocks/${blockId}`, {
             method: 'PATCH',
             body: JSON.stringify(body),
         });
@@ -340,8 +311,8 @@ export async function updateBlock(blockId, updates, scope = null) {
 
 export async function removeBlock(blockId, scope = null) {
     try {
-        const path = scope ? `/blocks/${blockId}?scope=${scope}` : `/blocks/${blockId}`;
-        await _apiFetch(path, { method: 'DELETE' });
+        const path = scope ? `/api/weekly/blocks/${blockId}?scope=${scope}` : `/api/weekly/blocks/${blockId}`;
+        await apiFetch(path, { method: 'DELETE' });
         await _removeBlockInCache(_currentWeekStart, blockId, scope);
         return true;
     } catch (e) {
