@@ -155,10 +155,15 @@ async function _refresh(key, startIso, endIso, view, prefetch) {
             // null means double-401 → logout already called
             if (!res) return { events: [], cache: 'miss' };
             if (!res.ok) {
+                if (res.status === 412) {
+                    // App Password missing or invalid — signal the settings UI.
+                    window.dispatchEvent(new CustomEvent('caldav-setup-required'));
+                    return { events: [], cache: 'miss' };
+                }
                 // Don't poison the cache on provider/server failures — the next
                 // call should retry cleanly. Surface an empty result so the
                 // weekly view degrades gracefully (existing blocks still show).
-                if (res.status === 503 || res.status >= 500) {
+                if (res.status === 502 || res.status === 503 || res.status >= 500) {
                     return { events: [], cache: 'miss' };
                 }
                 throw new Error(`calendar events HTTP ${res.status}`);
