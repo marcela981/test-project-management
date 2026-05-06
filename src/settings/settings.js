@@ -6,6 +6,7 @@ import { getCachedUser } from '../auth/auth.js';
 import { createElement as h } from 'react';
 import { createRoot } from 'react-dom/client';
 import DownloadMetricsModal from '../admin/components/DownloadMetricsModal.jsx';
+import { injectCalDAVSection } from './caldav-setup.js';
 
 const _PRIVILEGED = new Set(['admin', 'leader', 'supervisor']);
 let _metricsModalContainer  = null;
@@ -51,6 +52,7 @@ export async function openSettings() {
     document.getElementById('settingsPanel').classList.add('open');
     document.getElementById('settingsOverlay').classList.add('open');
     _injectReportsSection();
+    await injectCalDAVSection();
     await _loadIntoForm();
 }
 
