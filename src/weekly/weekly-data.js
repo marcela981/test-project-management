@@ -112,7 +112,7 @@ async function _fetchBlocksFromNetwork(weekStartIsoDate) {
     // Fetch manual/recurrence blocks and time-log entries in parallel.
     const [list, unifiedList] = await Promise.all([
         apiFetch(`/api/weekly/blocks?week_start=${weekStartIsoDate}`),
-        apiFetch(`/api/weekly/unified?week_start=${weekStartIsoDate}`).catch(err => { console.error('[weekly] /unified failed:', err); return []; }),
+        apiFetch(`/api/weekly/unified?week_start=${weekStartIsoDate}&_t=${Date.now()}`).catch(err => { console.error('[weekly] /unified failed:', err); return []; }),
     ]);
     if (!Array.isArray(list)) return [];
 
