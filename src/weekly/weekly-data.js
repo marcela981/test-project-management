@@ -135,7 +135,7 @@ async function _fetchBlocksFromNetwork(weekStartIsoDate) {
     const logBlocks = Array.isArray(unifiedList)
         ? unifiedList
             .filter(b => b.source === 'task' || b.source === 'activity')
-            .map(_normalizeLogBlock)
+            .map(b => _normalizeLogBlock(b, weekStartIsoDate))
         : [];
 
     // DEBUG — remove before merge (enable with ?debug=weekly in URL)
@@ -324,7 +324,7 @@ export async function removeBlock(blockId, scope = null) {
 
 // Converts a WeeklyBlockUnified entry (source=task|activity) to the display shape.
 // start_at is a UTC ISO 8601 string with Z suffix; converted to user's local timezone.
-function _normalizeLogBlock(b) {
+function _normalizeLogBlock(b, weekStartIsoDate) {
     let startTime = formatInUserTz(b.start_at, 'HH:mm');
     const localDate = formatInUserTz(b.start_at, 'yyyy-MM-dd');
     if (startTime < '06:00') {
@@ -341,7 +341,7 @@ function _normalizeLogBlock(b) {
     const isTask = b.source === 'task';
     return {
         id:               b.id,
-        week_start:       localDate,
+        week_start:       weekStartIsoDate,
         day:              new Date(b.start_at).getDay(),  // local day of week (0=Sun)
         block_type:       isTask ? 'task' : 'activity',
         task_id:          isTask ? b.source_ref_id : null,
