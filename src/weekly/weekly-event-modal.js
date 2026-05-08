@@ -66,41 +66,47 @@ function _ensureInjected() {
     }
     const wrapper = document.createElement('div');
     wrapper.id        = MODAL_ID;
-    wrapper.className = 'modal cal-event-modal';
+    wrapper.className = 'modal-overlay cal-event-modal';
     wrapper.innerHTML = `
-        <div class="modal-content cal-event-card">
-            <button class="modal-close" type="button"
-                    data-action="weekly-event-close" aria-label="Cerrar">&times;</button>
-            <h2 class="cal-event-title">Evento</h2>
-            <div class="cal-event-when"></div>
-            <div class="cal-event-row cal-event-location-row" hidden>
-                <i class="fas fa-map-marker-alt"></i>
-                <span class="cal-event-location"></span>
+        <div class="modal cal-event-card">
+            <div class="modal-header">
+                <h2 class="modal-title cal-event-title">Evento</h2>
+                <button class="modal-close" type="button"
+                        data-action="weekly-event-close" aria-label="Cerrar">&times;</button>
             </div>
-            <div class="cal-event-row cal-event-organizer-row" hidden>
-                <i class="fas fa-user"></i>
-                <span class="cal-event-organizer"></span>
+            <div class="modal-body">
+                <div class="cal-event-when"></div>
+                <div class="cal-event-row cal-event-location-row" hidden>
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span class="cal-event-location"></span>
+                </div>
+                <div class="cal-event-row cal-event-organizer-row" hidden>
+                    <i class="fas fa-user"></i>
+                    <span class="cal-event-organizer"></span>
+                </div>
+                <div class="cal-event-row cal-event-calendar-row" hidden>
+                    <i class="fas fa-calendar-alt"></i>
+                    <span class="cal-event-calendar"></span>
+                </div>
+                <div class="cal-event-row cal-event-description-row" hidden>
+                    <i class="fas fa-align-left"></i>
+                    <span class="cal-event-description"></span>
+                </div>
             </div>
-            <div class="cal-event-row cal-event-calendar-row" hidden>
-                <i class="fas fa-calendar-alt"></i>
-                <span class="cal-event-calendar"></span>
-            </div>
-            <div class="cal-event-row cal-event-description-row" hidden>
-                <i class="fas fa-align-left"></i>
-                <span class="cal-event-description"></span>
-            </div>
-            <div class="cal-event-actions">
+            <div class="modal-footer cal-event-footer">
                 <a class="btn btn-secondary cal-event-deep-link"
                    target="_blank" rel="noopener noreferrer">
                     <i class="fas fa-external-link-alt"></i> Abrir en Nextcloud
                 </a>
+                <button class="btn btn-outline" type="button"
+                        data-action="weekly-event-close">Cerrar</button>
             </div>
         </div>`;
     document.body.appendChild(wrapper);
 
-    // Backdrop click closes — read-only modal has no dirty state to guard.
     wrapper.addEventListener('click', e => {
         if (e.target === wrapper) closeEventModal();
+        if (e.target.closest('[data-action="weekly-event-close"]')) closeEventModal();
     });
 
     _injected = true;

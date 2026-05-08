@@ -888,15 +888,15 @@
 
 /* ── Calendar event detail modal ─────────────────────────────────────────── */
 
-.cal-event-modal .modal-content {
-    max-width: 480px;
+.cal-event-modal .modal {
+    max-width: min(480px, 92vw);
     border-left: 4px solid var(--cal-event-color);
 }
 
 .cal-event-when {
     color: var(--color-text-secondary);
     font-size: 0.875rem;
-    margin: 0.25rem 0 1rem;
+    margin: 0 0 1rem;
 }
 
 .cal-event-row {
@@ -918,10 +918,22 @@
 
 .cal-event-description {
     white-space: pre-wrap;
+    word-break: break-word;
 }
 
-.cal-event-actions {
-    margin-top: 1rem;
-    display: flex;
-    justify-content: flex-end;
+.cal-event-footer {
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+@media (max-width: 480px) {
+    .cal-event-footer {
+        flex-direction: column-reverse;
+    }
+
+    .cal-event-footer .btn {
+        width: 100%;
+        justify-content: center;
+    }
 }
