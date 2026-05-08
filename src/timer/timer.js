@@ -14,6 +14,11 @@ import { emitTimeLogChanged } from '../core/events.js';
 const NOTIFY_THRESHOLD    = { project: 3 * 3600, activity: 1 * 3600 };
 const HEARTBEAT_INTERVAL  = 60; // seconds between silent backend syncs
 
+// Heartbeat-in-flight guard per timer type. setInterval keeps firing _tick every
+// 1s even while an awaited saveTime is pending — without this flag, slow saves
+// (>1s) trigger overlapping heartbeats that all accumulate into the same row.
+const _heartbeatInFlight = { project: false, activity: false };
+
 export function startTimer(taskId) {
     const task = STATE.tasks.find(t => t.id === taskId);
     if (!task) return;
@@ -266,8 +271,12 @@ async function _tick(taskId, type) {
     const elapsed = _elapsed(type);
     el.textContent = formatTime(timer.accumulated + elapsed);
 
-    // Heartbeat: silently persist elapsed to backend every HEARTBEAT_INTERVAL seconds
-    if (elapsed >= HEARTBEAT_INTERVAL) {
+    // Heartbeat: silently persist elapsed to backend every HEARTBEAT_INTERVAL seconds.
+    // The in-flight guard prevents the next setInterval tick from launching a
+    // second concurrent save while the first is still awaiting the network — the
+    // overlap was double-counting time on the backend row.
+    if (elapsed >= HEARTBEAT_INTERVAL && !_heartbeatInFlight[type]) {
+        _heartbeatInFlight[type] = true;
         const subtaskId    = timer.subtaskId;
         const sessionStart = new Date(timer.sessionStart ?? timer.startTime).toISOString();
         try {
@@ -282,6 +291,8 @@ async function _tick(taskId, type) {
             }
         } catch {
             // Offline or 401: leave startTime unchanged, retry next interval
+        } finally {
+            _heartbeatInFlight[type] = false;
         }
     }
 
