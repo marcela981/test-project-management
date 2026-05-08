@@ -20,7 +20,7 @@ export function flushActiveTimers() {
 
     for (const [, timer] of Object.entries(STATE.timers)) {
         if (!timer) continue;
-        const { taskId, subtaskId, startTime } = timer;
+        const { taskId, subtaskId, startTime, sessionStart } = timer;
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         if (elapsed <= 0) continue;
 
@@ -36,6 +36,7 @@ export function flushActiveTimers() {
             subtaskId:   subtaskId === 'none' ? null : subtaskId,
             feedback:    null,
             absoluteTime,
+            startAt:     sessionStart ? new Date(sessionStart).toISOString() : null,
         })], { type: 'application/json' });
 
         navigator.sendBeacon(url, body);

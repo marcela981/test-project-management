@@ -15,7 +15,7 @@ const OBSTACLES = [
     'Funcionamiento del equipo',
 ];
 
-export function openCompletionModal(taskId, elapsed, subtaskId) {
+export function openCompletionModal(taskId, elapsed, subtaskId, sessionStart = null) {
     const task = STATE.tasks.find(t => t.id === taskId);
     if (!task || task.type !== 'project') return;
 
@@ -71,14 +71,15 @@ export function openCompletionModal(taskId, elapsed, subtaskId) {
         <button class="btn btn-primary" data-action="confirm-completion"
                 data-task-id="${taskId}"
                 data-elapsed="${elapsed}"
-                data-subtask-id="${subtaskId ?? 'none'}">
+                data-subtask-id="${subtaskId ?? 'none'}"
+                data-session-start="${sessionStart ?? ''}">
             <i class="fas fa-check-double"></i> Confirmar
         </button>`;
 
     openModal('modalTaskDetail');
 }
 
-export async function confirmCompletion(taskId, elapsed, subtaskId) {
+export async function confirmCompletion(taskId, elapsed, subtaskId, sessionStart = null) {
     const difficulty = parseInt(document.getElementById('completionDifficulty').value, 10) || 0;
     let obstacles = [];
 
@@ -101,14 +102,14 @@ export async function confirmCompletion(taskId, elapsed, subtaskId) {
     const hasSubtask = subtaskId && subtaskId !== 'none';
 
     if (hasSubtask) {
-        await saveTime(taskId, elapsed, subtaskId, {});
+        await saveTime(taskId, elapsed, subtaskId, {}, sessionStart);
         const sub = task.subtasks.find(s => s.id === subtaskId);
         if (sub) sub.completed = true;
         const done = task.subtasks.filter(s => s.completed).length;
         task.progress = Math.round((done / task.subtasks.length) * 100);
         await completeTask(taskId);
     } else {
-        await saveTime(taskId, elapsed, null, { progress: 100 });
+        await saveTime(taskId, elapsed, null, { progress: 100 }, sessionStart);
         await completeTask(taskId);
     }
 

@@ -80,7 +80,7 @@ export async function stopTimer(taskId) {
         const progressAfter  = Math.round((completedAfter / task.subtasks.length) * 100);
 
         if (progressAfter === 100 && task.type === 'project') {
-            openCompletionModal(taskId, elapsed, subtaskId);
+            openCompletionModal(taskId, elapsed, subtaskId, sessionStart);
             return;
         }
 
@@ -92,7 +92,7 @@ export async function stopTimer(taskId) {
         await updateTask(taskId, { subtasks: task.subtasks, progress: task.progress });
     } else {
         if (task.type === 'project') {
-            openCompletionModal(taskId, elapsed, null);
+            openCompletionModal(taskId, elapsed, null, sessionStart);
             return;
         }
         await saveTime(taskId, elapsed, subtaskId, { progress: 100 }, sessionStart);

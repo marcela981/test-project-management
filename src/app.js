@@ -191,7 +191,7 @@ async function handleClick(e) {
         case 'stop-timer':        await stopTimer(taskId); break;
         case 'cancel-pause':       cancelPause(taskId); break;
         case 'confirm-pause':      await confirmPause(taskId, parseInt(elapsed, 10)); break;
-        case 'confirm-completion': await confirmCompletion(taskId, parseInt(elapsed, 10), subtaskId); break;
+        case 'confirm-completion': await confirmCompletion(taskId, parseInt(elapsed, 10), subtaskId, el.dataset.sessionStart || null); break;
         case 'cancel-completion':  cancelCompletion(taskId); break;
 
         // Notificaciones de timer

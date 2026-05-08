@@ -40,9 +40,12 @@ export async function saveTime(taskId, timeSpent, subtaskId = null, feedback = n
         const task = STATE.tasks.find(t => t.id === taskId);
         const absoluteTime = (task?.timeSpent ?? 0) + timeSpent;
 
+        // Backend schema field is `startAt` (TimeRecord.startAt). Mismatched
+        // names made every save drop into the legacy merge-by-day path, so two
+        // separate sessions for the same task collapsed into a single row.
         await apiFetch(endpoint, {
             method: 'POST',
-            body: JSON.stringify({ timeSpent, subtaskId, feedback, absoluteTime, sessionStartAt }),
+            body: JSON.stringify({ timeSpent, subtaskId, feedback, absoluteTime, startAt: sessionStartAt }),
         });
     }
 
