@@ -4,7 +4,15 @@
  *
  * Each block is assigned the lowest available column; then totalColumns
  * is resolved per-block as the widest concurrent column-set it belongs to.
+ *
+ * Short blocks have a minimum visual height of MIN_BLOCK_MINUTES (matching the
+ * Math.max(24, ...) in the render functions). Overlap detection uses this visual
+ * footprint so consecutive short blocks don't paint over each other.
  */
+
+// Must match the `Math.max(24, duration)` floor in _renderLogBlock / _renderBlock.
+// With PX_PER_HOUR = 60 (1 min = 1 px) a 24-px floor equals 24 visual minutes.
+const MIN_BLOCK_MINUTES = 24;
 
 /**
  * @param {Array<{id: string, start_time: string, end_time: string}>} blocks
@@ -14,16 +22,22 @@ export function computeBlockLayout(blocks) {
     if (!blocks.length) return new Map();
 
     const items = blocks
-        .map(b => ({
-            id:    b.id,
-            start: _minsFromTime(b.start_time),
-            end:   _minsFromTime(b.end_time),
-            col:   -1,
-        }))
+        .map(b => {
+            const start = _minsFromTime(b.start_time);
+            const end   = _minsFromTime(b.end_time);
+            return {
+                id:    b.id,
+                start,
+                // Visual footprint: short blocks occupy at least MIN_BLOCK_MINUTES
+                // so the layout engine treats them as overlapping with what follows.
+                end:   Math.max(end, start + MIN_BLOCK_MINUTES),
+                col:   -1,
+            };
+        })
         .sort((a, b) => a.start - b.start || b.end - a.end);
 
     // Greedy column assignment: place each block in the first free column.
-    const colEnds = []; // colEnds[c] = end-minute of the last block in column c
+    const colEnds = []; // colEnds[c] = visual-end-minute of the last block in column c
     for (const item of items) {
         let placed = false;
         for (let c = 0; c < colEnds.length; c++) {
@@ -41,7 +55,7 @@ export function computeBlockLayout(blocks) {
     }
 
     // totalColumns for each block = highest column index among all
-    // concurrently overlapping blocks + 1.
+    // concurrently overlapping blocks (using visual footprint) + 1.
     const layout = new Map();
     for (const item of items) {
         let maxCol = item.col;

@@ -31,7 +31,7 @@ export async function fetchTasks() {
     ];
 }
 
-export async function saveTime(taskId, timeSpent, subtaskId = null, feedback = null) {
+export async function saveTime(taskId, timeSpent, subtaskId = null, feedback = null, sessionStartAt = null) {
     if (CONFIG.BACKEND_URL) {
         const endpoint = _isActivity(taskId)
             ? `/api/proyectos/activities/${taskId}/time`
@@ -42,7 +42,7 @@ export async function saveTime(taskId, timeSpent, subtaskId = null, feedback = n
 
         await apiFetch(endpoint, {
             method: 'POST',
-            body: JSON.stringify({ timeSpent, subtaskId, feedback, absoluteTime }),
+            body: JSON.stringify({ timeSpent, subtaskId, feedback, absoluteTime, sessionStartAt }),
         });
     }
 
